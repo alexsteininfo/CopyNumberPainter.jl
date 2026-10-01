@@ -7,7 +7,7 @@
 using CopyNumberEvolution
 
 # A small lineage tree: root -> two divisions -> four leaves. Real trees come from
-# `MutationLoadDynamics.jl` or `read_newick`; see example 05 for the newick route.
+# `NonMarkovEvolution.jl` or `read_newick`; see example 05 for the newick route.
 tree = phylotree([nothing, 1, 1, 2, 2, 3, 3];
                   edge_divisions = [nothing, 1, 1, 1, 1, 1, 1])
 
@@ -33,7 +33,9 @@ mat  = CNMatrix(res, grid)
 println("Bin matrix: ", ncells(mat), " cells x ", nbins(grid),
         " bins, max copy number ", max_cn(mat))
 
-outdir = mktempdir()
+# Files go to examples/output/ (git-ignored), or to the directory given as the first
+# argument, and are kept after the script ends so the printed commands can be run.
+outdir = mkpath(get(ARGS, 1, joinpath(@__DIR__, "output")))
 write_medicc2(joinpath(outdir, "cells.tsv"), mat)     # input for the reference method
 write_profiles(joinpath(outdir, "truth.tsv"), res)    # ground truth: every node
 write_events(joinpath(outdir, "events.tsv"), res)     # the complete event log

@@ -41,6 +41,30 @@ end
         end
     end
 
+    @testset "sampling commutes exactly with state-dependent draws and doublings" begin
+        full = binary_lineage(4)
+        keep = [17, 20, 25, 31]
+        sub = induced_subtree(full, keep)
+        kept_edge = node(full, mrca(full, [17, 20])).source_id      # kept by sampling
+        pruned_edge = node(full, 18).source_id                       # pruned by sampling
+        policies = (RateWGD(PerDivision(0.3)),
+                    ScheduledWGD(kept_edge => 1, pruned_edge => 1;
+                                 by = :source_id, allow_missing = true))
+        for wgd in policies
+            m = CNAModel(rate = PerDivision(1.5), target = CNWeighted(),
+                         extent = ExtentMixture(p_chromosome = 0.2, p_arm = 0.2),
+                         viability = RejectAndRedraw(), initial = TruncalCNAs(2; wgd = 1),
+                         wgd = wgd)
+            rf = simulate_cnas(full, A(), m; seed = 778, rng_mode = :per_node)
+            rs = simulate_cnas(sub, A(), m; seed = 778, rng_mode = :per_node)
+            @test count(e -> e.event isa WholeGenomeDoubling, rs.events) >= 2   # truncal + at least one edge
+            for l in keep
+                sid = node(full, l).source_id
+                @test profile(rs, node_by_source_id(sub, sid)) == profile(rf, l)
+            end
+        end
+    end
+
     @testset "sampling commutes distributionally under rng_mode = :global" begin
         # With one shared stream the draws cannot line up edge-for-edge, so the claim
         # is about distributions. The number of alterations on the retained edges is a

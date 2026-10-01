@@ -1,0 +1,13 @@
+node_id	name	order	type	chrom	haplotype	start	stop	delta	scale	mode
+1	cell_1	1	segmental	chr5	1	121149764	121291060	-1	focal	NA
+1	cell_1	2	segmental	chrX	2	13859237	15172596	-1	focal	NA
+1	cell_1	3	segmental	chr16	1	10136451	10536939	1	focal	NA
+1	cell_1	4	segmental	chr21	2	1	18648316	1	focal	NA
+2	cell_2	1	segmental	chr11	2	53548358	53735470	-1	focal	NA
+2	cell_2	2	segmental	chr16	2	18480502	35254872	1	focal	NA
+2	cell_2	3	wgd	NA	NA	NA	NA	NA	NA	multiply
+5	cell_5	1	segmental	chr7	1	29271666	32130998	1	focal	NA
+3	cell_3	1	segmental	chr10	1	70350501	71144530	-1	focal	NA
+3	cell_3	2	segmental	chr6	2	10885364	16839032	1	focal	NA
+6	cell_6	1	segmental	chr6	2	149508335	149873197	1	focal	NA
+7	cell_7	1	segmental	chr2	1	18511035	18711196	-1	focal	NA

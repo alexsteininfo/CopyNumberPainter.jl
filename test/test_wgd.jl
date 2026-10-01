@@ -84,4 +84,16 @@
             @test treeroot(t) ∉ keys(s)
         end
     end
+    @testset "ScheduledWGD can name edges by source_id" begin
+        t = phylotree([nothing, 1, 1, 2, 2]; source_ids = [10, 20, 30, 40, 50])
+        rng = Random.Xoshiro(1)
+        @test prepare_wgd(ScheduledWGD(40 => 1; by = :source_id), t, rng) == Dict(4 => 1)
+        @test_throws ArgumentError prepare_wgd(ScheduledWGD(99 => 1; by = :source_id), t, rng)
+        @test isempty(prepare_wgd(ScheduledWGD(99 => 1; by = :source_id, allow_missing = true), t, rng))
+        @test_throws ArgumentError prepare_wgd(ScheduledWGD(10 => 1; by = :source_id), t, rng)  # root
+        @test_throws ArgumentError ScheduledWGD(2 => 1; by = :bogus)
+        @test_throws ArgumentError ScheduledWGD(2 => 1; allow_missing = true)   # needs by = :source_id
+        @test ScheduledWGD(Dict(2 => 1)).by === :id
+    end
+
 end

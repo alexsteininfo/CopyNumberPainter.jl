@@ -3,7 +3,7 @@
 
 Forward simulation of somatic copy-number alterations along a cell-lineage tree.
 
-Takes a lineage tree — simulated by `MutationLoadDynamics.jl` or read from a newick
+Takes a lineage tree — simulated by `NonMarkovEvolution.jl` or read from a newick
 file — and draws copy-number alterations along its edges from a diploid or given root
 state, returning the allele-specific copy-number profile of every node together with a
 complete log of the events that produced it. Profiles project onto a fixed bin grid,
@@ -20,6 +20,8 @@ module CopyNumberEvolution
 using Random
 using Distributions
 using StatsBase
+import CodecZlib
+import TOML
 
 export
     # Assembly
@@ -31,7 +33,7 @@ export
 export
     # Profiles
     Segment, CNProfile, diploid, check_invariants, canonicalize!,
-    segment_index, cn_at, slot_segments, total_cn, nsegments
+    segment_index, cn_at, slot_segments, total_cn, nsegments, mean_cn
 
 export
     # Events
@@ -39,7 +41,7 @@ export
 
 export
     # Trees
-    PhyloNode, PhyloTree, phylotree,
+    PhyloNode, PhyloTree, phylotree, NodeRef,
     nnodes, treeroot, leaves, internal_nodes, node, parentof, childrenof,
     isleaf, isroot, depth, preorder, postorder, ancestors, descendant_leaves,
     edge_time, mrca, node_by_source_id, node_by_label, cellname, founder_mutations
@@ -70,19 +72,22 @@ export
 export
     # Model, simulation and results
     InitialState, Diploid, Given, TruncalCNAs,
-    CNAModel, LoggedEvent, CNAEvolution, simulate_cnas,
+    CNAModel, LoggedEvent, CNAEvolution, simulate_cnas, initial_profile,
     profile, leaf_profiles, events_on, events_below, nevents,
     rejection_count, replay
 
 export
     # Bin grid and matrices
-    Bin, BinGrid, nbins, bins_of,
+    Bin, BinGrid, nbins, bins_of, centromere_mask, read_bed_mask,
     BinRule, LengthWeightedMajority, AreaWeightedMean, project,
-    CNMatrix, ncells, max_cn
+    CNMatrix, ncells, max_cn, major_minor
 
 export
     # Output
-    write_profiles, write_events, write_bins, write_medicc2
+    write_profiles, write_events, write_bins, write_medicc2,
+    write_tree, read_tree, read_profiles, read_events, read_bins,
+    write_matrix, save_simulation, load_simulation, save_matrix, load_matrix,
+    ModelRecord
 
 include("assembly.jl")
 include("profile.jl")
@@ -96,5 +101,6 @@ include("viability.jl")
 include("evolve.jl")
 include("bingrid.jl")
 include("io.jl")
+include("records.jl")
 
 end # module

@@ -77,6 +77,18 @@
         @test cellname(t, 2; prefix = "node") == "node_2"
     end
 
+    @testset "lookups are indexed and refuse ambiguity" begin
+        t = phylotree([nothing, 1, 1, 2, 2]; labels = [nothing, "100", "c", "100", "a"],
+                      source_ids = [10, 20, 30, 40, 50])
+        @test node_by_label(t, "a") == 5
+        @test node_by_source_id(t, 40) == 4
+        err = try node_by_label(t, "100"); nothing catch e; e end
+        @test err isa ArgumentError && occursin("2", err.msg) && occursin("4", err.msg)
+        @test_throws ArgumentError node_by_label(t, "zzz")
+        @test_throws ArgumentError node_by_source_id(t, 99)
+        @test_throws ArgumentError phylotree([nothing, 1, 1]; source_ids = [1, 2, 2])
+    end
+
     @testset "malformed trees are rejected" begin
         @test_throws ArgumentError phylotree([nothing, nothing])       # two roots
         @test_throws ArgumentError phylotree([1, 1])                   # no root
@@ -93,7 +105,7 @@
 
         # A node listed twice as a child cannot be built through phylotree —
         # it buckets each node under exactly one parent — so construct the
-        # nodes directly. This is the path Task 6's newick parser uses.
+        # nodes directly. This is the path the newick parser uses.
         dup = [CopyNumberEvolution.PhyloNode(1, nothing, [2, 2], nothing, nothing,
                                              nothing, nothing, nothing),
                CopyNumberEvolution.PhyloNode(2, 1, Int[], nothing, nothing,

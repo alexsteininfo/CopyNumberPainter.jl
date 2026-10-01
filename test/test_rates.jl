@@ -78,4 +78,13 @@
         bad = phylotree([nothing, 1]; birthtimes = [1.0, 0.0])
         @test_throws ArgumentError n_cnas(PerTime(1.0), bad, 2, Random.Xoshiro(1))
     end
+
+
+    @testset "CustomRate must return a non-negative integer" begin
+        t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
+        rng = Random.Xoshiro(1)
+        @test_throws ArgumentError n_cnas(CustomRate((tr, i, r) -> -1), t, 2, rng)
+        @test_throws ArgumentError n_cnas(CustomRate((tr, i, r) -> 1.5), t, 2, rng)
+        @test n_cnas(CustomRate((tr, i, r) -> UInt8(3)), t, 2, rng) === 3
+    end
 end

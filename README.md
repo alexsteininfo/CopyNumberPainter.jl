@@ -1,8 +1,10 @@
 # CopyNumberEvolution.jl
 
+[![Docs (dev)](https://img.shields.io/badge/docs-dev-blue.svg)](https://alexander-stein.github.io/CopyNumberEvolution.jl/dev/)
+
 Forward simulation of somatic copy-number alterations along a cell-lineage tree.
 
-Give it a tree — simulated by `MutationLoadDynamics.jl` or read from a newick file — and
+Give it a tree — simulated by `NonMarkovEvolution.jl` or read from a newick file — and
 it draws copy-number alterations along the edges from a diploid or given root state,
 returning the allele-specific profile of **every** node plus a **complete log** of the
 events that produced it, then projects those profiles onto a fixed bin grid.
@@ -23,25 +25,34 @@ Pkg.add(url = "https://github.com/alexander-stein/CopyNumberEvolution.jl")
 using CopyNumberEvolution
 
 assembly = hg38(:female)
-tree = read_newick("lineage.nwk"; branchlength = :divisions)
+
+# A small lineage tree: root -> two divisions -> four leaves. Real trees come from
+# NonMarkovEvolution.jl or a newick file:
+#   tree = read_newick("lineage.nwk"; branchlength = :divisions)
+tree = phylotree([nothing, 1, 1, 2, 2, 3, 3];
+                 edge_divisions = [nothing, 1, 1, 1, 1, 1, 1])
 
 model = CNAModel(
-    rate      = PerDivision(0.5),
-    target    = CNWeighted(1.0),
-    extent    = ExtentMixture(p_chromosome = 0.05, p_arm = 0.15),
-    kind      = GainLoss(0.6),
-    wgd       = ScheduledWGD(mrca(tree, [12, 34]) => 1),
-    initial   = TruncalCNAs(4),
+    rate    = PerDivision(0.5),
+    target  = CNWeighted(1.0),
+    extent  = ExtentMixture(p_chromosome = 0.05, p_arm = 0.15),
+    kind    = GainLoss(0.6),
+    wgd     = ScheduledWGD(mrca(tree, [4, 5]) => 1),
+    initial = TruncalCNAs(4),
 )
 
 res  = simulate_cnas(tree, assembly, model; seed = 20260904)
 grid = BinGrid(assembly, 500_000)
 mat  = CNMatrix(res, grid)
 
-write_medicc2("cells.tsv", mat)     # input for the reference method
-write_profiles("truth.tsv", res)    # the ground truth to compare against
-write_events("events.tsv", res)
+mkpath("results")
+save_simulation("results/run", res)      # profiles of every node plus the complete log
+write_medicc2("cells.tsv.gz", mat)       # input for the reference method
+res = load_simulation("results/run")     # reload the saved run later
 ```
+
+To benchmark MEDICC2 with these simulations, see the manual page "Using this as a
+MEDICC2 benchmark".
 
 ## What it models
 
@@ -67,7 +78,7 @@ drawn from a rate.
 | | |
 |:---|:---|
 | Here | tree types, copy-number profiles, the alteration process, bin projection, MEDICC2 export |
-| `MutationLoadDynamics.jl` | lineage-tree simulation and leaf sampling (a **weak** dependency) |
+| `NonMarkovEvolution.jl` | lineage-tree simulation and leaf sampling (a **weak** dependency) |
 | Downstream | tree inference, distances, estimators — these must never depend on a simulator |
 | Study repositories | parameter grids, file naming, figures |
 
@@ -105,7 +116,7 @@ julia --project examples/05_newick_and_medicc2.jl        # newick in, MEDICC2 ex
 Documented rather than silently settled — see the manual's Limitations page:
 
 - The **straddling-bin projection rule** is unresolved; the default is a placeholder.
-- The **copy-number ceiling** (MEDICC2 caps at 8) is warned about on export but not
+- The **copy-number ceiling** (MEDICC2 caps at 8 per allele) is warned about on export but not
   capped in simulation.
 - `RejectAndRedraw`'s default `min_total_cn = 1` forbids homozygous deletions of *any*
   size, not just whole-chromosome nullisomy.
@@ -118,11 +129,16 @@ Documented rather than silently settled — see the manual's Limitations page:
 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-The package-extension tests skip themselves unless `MutationLoadDynamics.jl` is
-available:
+The package-extension tests skip themselves unless `NonMarkovEvolution.jl` is
+loadable. It is only a weak dependency, so run them from the repository root in a
+temporary environment (never `Pkg.develop` into the package's own project, which would
+write it into `[deps]`):
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.develop(path = "../MutationLoadDynamics.jl")'
+julia -e 'using Pkg; Pkg.activate(temp = true); Pkg.develop(path = pwd());
+          Pkg.develop(path = "../NonMarkovEvolution.jl");
+          Pkg.add(["Test", "Distributions", "Aqua", "AbstractTrees", "REPL"]);
+          include(joinpath(pwd(), "test", "runtests.jl"))'
 ```
 
 **No real patient data belongs in this repository.** Fixtures are synthetic and small;

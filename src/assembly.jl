@@ -65,6 +65,7 @@ struct GenomeAssembly
     slotchrom::Vector{Int}
     nslots::Int
     eligible::Vector{Int}
+    eligible_lengths::Vector{Float64}
 
     function GenomeAssembly(name::AbstractString, sex::Symbol,
                             chromosomes::Vector{ChromosomeSpec}, ploidy::Vector{Int})
@@ -83,7 +84,9 @@ struct GenomeAssembly
             slotchrom[offset[c] + h] = c
         end
         eligible = [c for c in 1:n if ploidy[c] > 0]
-        new(String(name), sex, chromosomes, copy(ploidy), offset, slotchrom, total, eligible)
+        eligible_lengths = Float64[chromosomes[c].length for c in eligible]
+        new(String(name), sex, chromosomes, copy(ploidy), offset, slotchrom, total,
+            eligible, eligible_lengths)
     end
 end
 

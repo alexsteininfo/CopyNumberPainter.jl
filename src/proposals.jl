@@ -1,5 +1,8 @@
 # Sample an index from non-negative weights in one pass. Deterministic given `rng`,
 # and it never iterates a Dict — see the package's determinism constraint.
+# Zero weights are skipped outright: with `u <= acc`, a draw of exactly 0.0 would
+# select a leading zero weight, and a rounding shortfall at the end would select a
+# trailing one.
 function _sample_weighted(rng::Random.AbstractRNG, weights::AbstractVector{Float64})
     total = sum(weights)
     total > 0 || throw(ArgumentError(
@@ -7,11 +10,15 @@ function _sample_weighted(rng::Random.AbstractRNG, weights::AbstractVector{Float
         "the profile may have no material left to alter"))
     u = rand(rng) * total
     acc = 0.0
+    last_positive = 0
     @inbounds for i in eachindex(weights)
-        acc += weights[i]
-        u <= acc && return i
+        w = weights[i]
+        w > 0 || continue
+        acc += w
+        last_positive = i
+        u < acc && return i
     end
-    return lastindex(weights)
+    return last_positive
 end
 
 """
@@ -49,12 +56,17 @@ haplotypes — i.e. uniform over base pairs.
 struct LengthWeighted <: TargetDraw end
 
 """
-    CNWeighted(β)
+    CNWeighted(β = 1.0; length_weighted = true)
 
-Haplotype slot chosen with weight proportional to its mean copy number raised to `β`,
-so already-gained material keeps being gained. This is the rule that conditions the
-proposal on the mother cell's copy-number state, and it is what produces realistic
-ploidy skew.
+Haplotype slot chosen with weight proportional to its copy-number **material**:
+chromosome length × mean copy number^`β`. With the defaults that is the number of
+base-pair copies the slot carries, so every copy of every base pair is equally likely
+to be hit and already-gained material keeps being gained. This is the rule that
+conditions the proposal on the mother cell's copy-number state, and it is what
+produces realistic ploidy skew.
+
+`length_weighted = false` drops the length factor, giving weight `mean_cn^β` per
+slot: chromosomes are then equally likely at equal copy number, whatever their size.
 
 A slot whose mean copy number is 0 gets weight 0 for every `β`, including `β = 0`, so
 fully deleted material is never targeted — consistent with copy number 0 being
@@ -63,7 +75,11 @@ looping.
 """
 struct CNWeighted <: TargetDraw
     β::Float64
-    CNWeighted(β::Real = 1.0) = new(Float64(β))
+    length_weighted::Bool
+    function CNWeighted(β::Real = 1.0; length_weighted::Bool = true)
+        isfinite(β) || throw(ArgumentError("CNWeighted exponent β must be finite, got $β"))
+        new(Float64(β), length_weighted)
+    end
 end
 
 """
@@ -81,8 +97,7 @@ end
 function draw_target(::LengthWeighted, p::CNProfile, rng::Random.AbstractRNG)
     a = p.assembly
     elig = eligible_chromosomes(a)
-    w = Float64[chromlength(a, c) for c in elig]
-    c = elig[_sample_weighted(rng, w)]
+    c = elig[_sample_weighted(rng, a.eligible_lengths)]
     return (c, rand(rng, 1:ploidy(a, c)))
 end
 
@@ -90,8 +105,9 @@ function draw_target(d::CNWeighted, p::CNProfile, rng::Random.AbstractRNG)
     a = p.assembly
     w = Vector{Float64}(undef, nslots(a))
     @inbounds for s in 1:nslots(a)
-        m = mean_cn(p.segments[s], chromlength(a, slot_chrom(a, s)))
-        w[s] = m == 0 ? 0.0 : m^d.β
+        L = chromlength(a, slot_chrom(a, s))
+        m = mean_cn(p.segments[s], L)
+        w[s] = m == 0 ? 0.0 : (d.length_weighted ? L : 1) * m^d.β
     end
     s = _sample_weighted(rng, w)
     return (slot_chrom(a, s), slot_haplotype(a, s))
@@ -123,9 +139,11 @@ at a realistic rate by any continuous length distribution, so they get their own
 probabilities. `p_focal` is whatever the two leave over. Setting both to zero ignores
 large-scale events entirely without changing the code path.
 
-Focal events draw a length from `lengthdist`, then a uniform start, then **truncate**
-at the chromosome end — truncation rather than rejection, matching MEDICC2, where an
-event terminates at the boundary. Arm events pick the p or q arm with equal
+Focal events draw a length from `lengthdist`, then a start uniform over every position
+from which the event still overlaps the chromosome, then **truncate** at whichever end
+it overhangs. Truncation rather than rejection, matching MEDICC2. Every position is then
+equally likely to be covered, and realised focal lengths are shorter than drawn near
+both telomeres. Arm events pick the p or q arm with equal
 probability and need the assembly's centromere positions.
 
 The default `lengthdist` spans 100 kb to 100 Mb log-uniformly, so focal and near-arm
@@ -163,9 +181,13 @@ function draw_extent(d::ExtentMixture, p::CNProfile, c::Integer, h::Integer,
         chosen = rand(rng, Bool) ? parm : qarm
         return (first(chosen), last(chosen), :arm)
     else
+        # The start runs from 2 - len so an event can hang off either end and be
+        # clipped. Drawing it from 1:L instead would let only events starting at 1
+        # reach the p-telomere while every late start reaches the q-telomere,
+        # leaving the q end covered up to len times more often.
         len = clamp(round(Int, rand(rng, d.lengthdist)), 1, L)
-        start = rand(rng, 1:L)
-        return (start, min(L, start + len - 1), :focal)
+        s = rand(rng, (2 - len):L)
+        return (max(1, s), min(L, s + len - 1), :focal)
     end
 end
 

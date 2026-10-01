@@ -7,7 +7,7 @@ to *fit* these parameters, so every one must be addressable and cheap to vary.
 ```julia
 model = CNAModel(
     rate      = PerDivision(1.0),
-    target    = UniformChromosome(),
+    target    = CNWeighted(),
     extent    = ExtentMixture(),
     kind      = GainLoss(0.5),
     wgd       = NoWGD(),
@@ -54,10 +54,11 @@ realised alteration rate.
   *chromosomes*, not base pairs.
 - [`LengthWeighted`](@ref) — proportional to chromosome length, i.e. uniform over base
   pairs.
-- [`CNWeighted`](@ref)`(β)` — slot weight proportional to mean copy number to the power
-  `β`, so already-gained material keeps being gained. This is the rule that conditions
-  the proposal on the mother cell's copy-number state, and it is what produces
-  realistic ploidy skew.
+- [`CNWeighted`](@ref)`(β; length_weighted = true)` — the default. Slot weight is
+  chromosome length × mean copy number^`β` (copy-number material), so already-gained
+  material keeps being gained. `length_weighted = false` drops the length factor. This
+  is the rule that conditions the proposal on the mother cell's copy-number state, and
+  it is what produces realistic ploidy skew.
 
 Chromosomes with zero ploidy are never eligible. Haplotype choice is uniform over a
 chromosome's slots unless a rule says otherwise, which is what lets mirrored allelic
@@ -82,9 +83,11 @@ at a realistic rate by any continuous length distribution, so they get their own
 probabilities. Setting both to zero ignores large-scale events entirely without
 changing the code path — which is how early analyses will typically run.
 
-Focal events draw a length, then a uniform start, then **truncate** at the chromosome
-end. Truncation rather than rejection, matching MEDICC2, where an event terminates at
-the boundary. Arm events pick the p or q arm with equal probability and need the
+Focal events draw a length, then a start uniform over every position from which the
+event still overlaps the chromosome, then **truncate** at whichever end it overhangs.
+Truncation rather than rejection, matching MEDICC2. Every position is then equally
+likely to be covered, and realised focal lengths are shorter than drawn near both
+telomeres. Arm events pick the p or q arm with equal probability and need the
 assembly's centromere positions.
 
 ## Kind: gain or loss
@@ -105,6 +108,7 @@ NoWGD()
 ScheduledWGD(node_by_source_id(tree, 42) => 1)        # exactly there
 ScheduledWGD(mrca(tree, metastatic_leaves) => 1)      # a subclonal doubling
 ScheduledWGD(Dict(7 => 2))                            # two successive doublings
+ScheduledWGD(42 => 1; by = :source_id, allow_missing = true)  # stable under sampling
 ExactlyNWGD(1)                                        # one doubling, position random
 RateWGD(PerDivision(0.01))                            # a rate; RateWGD(0.01) is the same
 RateWGD(PerTime(0.005))
@@ -117,6 +121,11 @@ no incoming edge; set the root's state with `TruncalCNAs` or `Given` instead.
 [`RateWGD`](@ref) reuses the [`CNARate`](@ref) machinery, so the
 per-division-versus-per-time question applies to doublings on the same footing as to
 segmental events.
+
+Under `rng_mode = :per_node`, `RateWGD` draws each edge's doublings from that edge's own
+stream, and `ScheduledWGD(...; by = :source_id)` names edges by ids that sampling does
+not renumber; both therefore commute with leaf sampling. `ExactlyNWGD` does not, and
+warns. See [Output](output.md) for the full list of conditions.
 
 ### `:multiply` versus `:increment`
 
@@ -135,9 +144,11 @@ gains.
 
 ### Ordering on an edge is defined, not incidental
 
-Doublings are applied **before** that edge's segmental alterations, and the realised
-order is recorded in the event log. So "gained then doubled" is always recoverable from
-the output rather than reconstructed by guesswork.
+Each doubling on an edge falls at a uniformly random position among that edge's
+segmental alterations, and the realised order is recorded in the event log. So both
+"gained then doubled" and "doubled then gained" occur, and the log says which. This
+matters on long edges, such as a trunk or a newick edge of many divisions: under
+`:multiply` a gain made before a doubling ends up at +2 copies, one made after it at +1.
 
 ## Viability
 
@@ -164,6 +175,13 @@ The whole interface is one method, [`violation`](@ref), returning a reason symbo
 the traversal how many redraws to allow. A new class of impossible state is therefore a
 new struct and no change to the traversal.
 
+Proposals that fall entirely on absent DNA (copy number 0, which is absorbing) would
+change nothing. They are redrawn, tallied as `:no_effect`, and do not spend a
+viability attempt, so every logged event changed the genome and `nevents` and per-edge
+counts are counts of real alterations. The redraws condition the *target* distribution
+on hitting existing material; the count is reported. If a profile has no material left,
+the redraw loop stops after 10,000 tries with an error.
+
 !!! warning "This conditions the model"
     Rejection sampling makes the alteration process **conditional on viability**, so
     the realised distribution is not the proposal distribution. That is a modelling
@@ -186,9 +204,17 @@ the most recent common ancestor of the sample. Truncal state is therefore the ro
 - [`Diploid`](@ref) — a normal karyotype, sex from the assembly. The default.
 - [`Given`](@ref)`(profile)` — start from a called ancestral or consensus profile. It
   must be on the same assembly and sex, and is copied rather than mutated.
-- [`TruncalCNAs`](@ref)`(n)` — apply `n` alterations from diploid, drawn from the same
-  model and **logged against the root**, so they appear in the event record like any
-  others.
+- [`TruncalCNAs`](@ref)`(n; wgd, mode)` — apply `n` alterations from diploid, drawn from
+  the same model and **logged against the root**, so they appear in the event record
+  like any others. `wgd` whole-genome doublings are placed at uniformly random
+  positions among them, which is how a doubling on the trunk is expressed (the root has
+  no incoming edge for [`ScheduledWGD`](@ref) to name). `mode` is the doubling
+  arithmetic; by default it is taken from the model's WGD policy.
+
+A new root state is a subtype of `InitialState` plus one method of
+[`initial_profile`](@ref), the root's profile before any root-logged event; `replay`
+uses the recorded `res.root_base` (the root's state before any root-logged event), not
+`initial_profile`. That is why it needs no model, and the event log stays sufficient.
 
 ## Alterations here are neutral by construction
 

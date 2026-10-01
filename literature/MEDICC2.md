@@ -4,7 +4,7 @@
 Minussi DC, Navin N, Swanton C, Van Loo P, Haase K, Tarabichi M, Schwarz RF.
 *MEDICC2: whole-genome doubling aware copy-number phylogenies for cancer evolution.*
 **Genome Biology** 23:241 (2022). doi:[10.1186/s13059-022-02794-9](https://doi.org/10.1186/s13059-022-02794-9)
-· PDF in this folder (`MEDICC2.pdf`, 27 pp.) · PMC: [PMC9661799](https://pmc.ncbi.nlm.nih.gov/articles/PMC9661799/)
+· PDF in this folder (`MEDICC2.pdf`, 27 pp.; redistributed under its CC BY 4.0 licence, as printed on the article) · PMC: [PMC9661799](https://pmc.ncbi.nlm.nih.gov/articles/PMC9661799/)
 
 **Code.** Python 3, GPLv3, <https://bitbucket.org/schwarzlab/medicc2>.
 Predecessor: MEDICC (Schwarz et al. 2014, ref. [6] in the paper) — same MED idea,

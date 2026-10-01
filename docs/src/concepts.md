@@ -69,7 +69,7 @@ Storage is a `Vector` indexed by slot rather than a `Dict` keyed by
 in Julia, so any pass over haplotypes that consumes the random number generator —
 length-weighted or copy-number-conditioned target choice, doubling, viability checks —
 would be irreproducible across Julia versions and insertion histories. Reproducibility
-under a fixed seed is a tested property here, not an aspiration.
+under a fixed seed is a tested property here, not an aspiration, and seeded streams are pinned by a test across Julia versions.
 
 ### Canonical form
 
@@ -146,6 +146,7 @@ regained. A gain spanning a run that contains zeroed sub-segments raises the non
 parts and leaves the zeros at zero:
 
 ```julia
+toy = GenomeAssembly("toy", :female, [ChromosomeSpec("chr1", 100, 41:60)], [2])
 p = diploid(toy)
 apply!(p, SegmentalCNA(1, 1, 21, 40, -1, :focal))       # 21:40 -> 0
 apply!(p, SegmentalCNA(1, 1, 1, 100, +1, :chromosome))  # 21:40 stays 0
@@ -153,5 +154,9 @@ apply!(p, SegmentalCNA(1, 1, 1, 100, +1, :chromosome))  # 21:40 stays 0
 
 This is unconditionally true and is **not** part of the viability policy. Viability is
 about states that are *unobserved*; absorption is about states that are *impossible*.
-So absorption is never switchable off, and a proposal it blocks costs no rejection
-attempt.
+So absorption is never switchable off, and a proposal it blocks does not
+spend a viability attempt.
+
+A proposal that falls entirely on absent DNA changes nothing, so the simulator redraws
+it and tallies it as `:no_effect` instead of logging it. Every logged event therefore
+changed the genome.

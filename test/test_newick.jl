@@ -4,7 +4,7 @@
         @test_throws ArgumentError parse_newick("(A:1,B:2);"; branchlength = :bogus)
     end
 
-    @testset ":time accumulates birthtimes and sets one division per edge" begin
+    @testset ":time accumulates birthtimes and nothing else" begin
         t = parse_newick("((A:1.0,B:2.0)X:0.5,C:3.0)R;"; branchlength = :time)
         @test nnodes(t) == 5
         @test node_by_label(t, "R") == treeroot(t)
@@ -14,9 +14,9 @@
         @test node(t, node_by_label(t, "A")).birthtime ≈ 1.5
         @test node(t, node_by_label(t, "C")).birthtime ≈ 3.0
         @test edge_time(t, node_by_label(t, "B")) ≈ 2.0
-        @test all(node(t, i).edge_divisions == 1 for i in 1:nnodes(t) if !isroot(t, i))
-        @test node(t, treeroot(t)).edge_divisions === nothing
-        @test node(t, node_by_label(t, "A")).edge_mutations === nothing
+        @test all(node(t, i).edge_divisions === nothing for i in 1:nnodes(t))
+        @test_throws ArgumentError n_cnas(PerDivision(1.0), t, node_by_label(t, "A"), Random.Xoshiro(1))
+        @test n_cnas(PerTime(1.0), t, node_by_label(t, "A"), Random.Xoshiro(1)) isa Int
     end
 
     @testset ":divisions and :mutations fill their own field only" begin
@@ -143,5 +143,64 @@
         @test occursin("'has,comma'", s)
         rt = parse_newick(s; branchlength = :divisions)
         @test node_by_label(rt, "has,comma") isa Int
+    end
+
+    @testset "deep trees round-trip without recursion" begin
+        n = 100_000
+        t = phylotree(vcat(nothing, collect(1:n - 1));
+                      edge_divisions = vcat(nothing, fill(1, n - 1)))
+        rt = parse_newick(newick_string(t; branchlength = :divisions); branchlength = :divisions)
+        @test nnodes(rt) == n
+        @test depth(rt, only(leaves(rt))) == n - 1
+        @test all(node(rt, i).edge_divisions == 1 for i in 1:n if !isroot(rt, i))
+    end
+
+    @testset "node ids are assigned in preorder" begin
+        t = parse_newick("((A,B)X,C)R;"; branchlength = :divisions)
+        @test [cellname(t, i) for i in 1:nnodes(t)] == ["R", "X", "A", "B", "C"]
+    end
+
+    @testset "whitespace and comments around labels and lengths" begin
+        t = parse_newick("( A : 1 , B [x] : 2 ) [c] R [d] ;"; branchlength = :divisions)
+        @test node_by_label(t, "R") == treeroot(t)
+        @test node(t, node_by_label(t, "B")).edge_divisions == 2
+        @test_throws ArgumentError parse_newick("(A,B)R [open;"; branchlength = :divisions)
+    end
+
+    @testset "duplicate leaf names are refused on write; internal ones are not" begin
+        dup = phylotree([nothing, 1, 1]; edge_divisions = [nothing, 1, 1],
+                        labels = ["R", "x", "x"])
+        @test_throws ArgumentError newick_string(dup; branchlength = :divisions)
+        # support values as internal labels, as inferred trees carry them, still write
+        sup = parse_newick("(((A:1,B:1)100:1,C:1)100:1,D:1)R;"; branchlength = :divisions)
+        @test occursin("100", newick_string(sup; branchlength = :divisions))
+    end
+
+
+    @testset "labels with tabs or newlines are quoted and round-trip" begin
+        t = phylotree([nothing, 1, 1]; edge_divisions = [nothing, 1, 1],
+                      labels = ["R", "a\tb", "c\nd"])
+        rt = parse_newick(newick_string(t; branchlength = :divisions); branchlength = :divisions)
+        @test node_by_label(rt, "a\tb") isa Int
+        @test node_by_label(rt, "c\nd") isa Int
+    end
+
+    @testset ".gz paths are compressed on write and decompressed on read" begin
+        t = parse_newick("((A:1,B:2)C:3,D:4)R;"; branchlength = :divisions)
+        path = joinpath(mktempdir(), "t.nwk.gz")
+        write_newick(path, t; branchlength = :divisions)
+        @test read(path)[1:2] == [0x1f, 0x8b]          # gzip magic bytes
+        back = read_newick(path; branchlength = :divisions)
+        @test newick_string(back; branchlength = :divisions) ==
+              newick_string(t; branchlength = :divisions)
+    end
+
+    @testset "a refused write does not truncate an existing file" begin
+        dup = phylotree([nothing, 1, 1]; edge_divisions = [nothing, 1, 1],
+                        labels = ["R", "x", "x"])
+        path = joinpath(mktempdir(), "keep.nwk")
+        write(path, "keep")
+        @test_throws ArgumentError write_newick(path, dup; branchlength = :divisions)
+        @test read(path, String) == "keep"
     end
 end

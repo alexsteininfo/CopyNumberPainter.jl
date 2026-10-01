@@ -2,41 +2,42 @@
     @testset "the extension is wired up in Project.toml" begin
         proj = read(joinpath(@__DIR__, "..", "Project.toml"), String)
         @test occursin("[weakdeps]", proj)
-        @test occursin("MutationLoadDynamics = \"7b855ee6-6887-412f-a571-26d20a5a92d7\"", proj)
-        @test occursin("CopyNumberEvolutionMutationLoadDynamicsExt = \"MutationLoadDynamics\"", proj)
+        @test occursin("NonMarkovEvolution = \"7b855ee6-6887-412f-a571-26d20a5a92d7\"", proj)
+        @test occursin("CopyNumberEvolutionNonMarkovEvolutionExt = \"NonMarkovEvolution\"", proj)
         # and never a hard dependency: the simulator must not be reachable from an
         # inference-only install
         deps = match(r"\[deps\](.*?)\n\["s, proj)
         @test deps !== nothing
-        @test !occursin("MutationLoadDynamics", deps.captures[1])
+        @test !occursin("NonMarkovEvolution", deps.captures[1])
         @test isfile(joinpath(@__DIR__, "..", "ext",
-                              "CopyNumberEvolutionMutationLoadDynamicsExt.jl"))
+                              "CopyNumberEvolutionNonMarkovEvolutionExt.jl"))
     end
 
-    mld_loaded = try
-        @eval using MutationLoadDynamics
+    nme_loaded = try
+        @eval using NonMarkovEvolution
         true
     catch
         false
     end
 
-    if !mld_loaded
-        @info """MutationLoadDynamics.jl is not available, so the conversion tests are skipped.
-                 Enable them with: julia --project=. -e 'using Pkg; Pkg.develop(path = "../MutationLoadDynamics.jl")'"""
+    if !nme_loaded
+        @info """NonMarkovEvolution.jl is not available, so the conversion tests are skipped.
+                 Run them from the repository root in a temporary environment:
+                 julia -e 'using Pkg; Pkg.activate(temp = true); Pkg.develop(path = pwd()); Pkg.develop(path = "../NonMarkovEvolution.jl"); Pkg.add(["Test", "Distributions", "Aqua", "AbstractTrees", "REPL"]); include(joinpath(pwd(), "test", "runtests.jl"))'"""
     else
         @testset "converting a lineage tree" begin
             # Build a small BinaryNode tree by hand: founder -> two daughters,
             # the left one dividing again.
-            root = MutationLoadDynamics.BinaryNode(
-                MutationLoadDynamics.NonMarkovCell(1, 0.0, 3, 1.0))
-            MutationLoadDynamics.leftchild!(root,
-                MutationLoadDynamics.NonMarkovCell(2, 1.5, 4, 1.0))
-            MutationLoadDynamics.rightchild!(root,
-                MutationLoadDynamics.NonMarkovCell(3, 1.5, 1, 1.0))
-            MutationLoadDynamics.leftchild!(root.left,
-                MutationLoadDynamics.NonMarkovCell(4, 2.25, 2, 1.0))
-            MutationLoadDynamics.rightchild!(root.left,
-                MutationLoadDynamics.NonMarkovCell(5, 2.75, 0, 1.0))
+            root = NonMarkovEvolution.BinaryNode(
+                NonMarkovEvolution.NonMarkovCell(1, 0.0, 3, 3, 1.0))
+            NonMarkovEvolution.left_child!(root,
+                NonMarkovEvolution.NonMarkovCell(2, 1.5, 4, 7, 1.0))
+            NonMarkovEvolution.right_child!(root,
+                NonMarkovEvolution.NonMarkovCell(3, 1.5, 1, 4, 1.0))
+            NonMarkovEvolution.left_child!(root.left,
+                NonMarkovEvolution.NonMarkovCell(4, 2.25, 2, 9, 1.0))
+            NonMarkovEvolution.right_child!(root.left,
+                NonMarkovEvolution.NonMarkovCell(5, 2.75, 0, 7, 1.0))
 
             t = PhyloTree(root)
             @test nnodes(t) == 5
@@ -60,12 +61,12 @@
         end
 
         @testset "all three rate rules work on a converted tree" begin
-            root = MutationLoadDynamics.BinaryNode(
-                MutationLoadDynamics.NonMarkovCell(1, 0.0, 2, 1.0))
-            MutationLoadDynamics.leftchild!(root,
-                MutationLoadDynamics.NonMarkovCell(2, 1.0, 5, 1.0))
-            MutationLoadDynamics.rightchild!(root,
-                MutationLoadDynamics.NonMarkovCell(3, 2.0, 7, 1.0))
+            root = NonMarkovEvolution.BinaryNode(
+                NonMarkovEvolution.NonMarkovCell(1, 0.0, 2, 2, 1.0))
+            NonMarkovEvolution.left_child!(root,
+                NonMarkovEvolution.NonMarkovCell(2, 1.0, 5, 7, 1.0))
+            NonMarkovEvolution.right_child!(root,
+                NonMarkovEvolution.NonMarkovCell(3, 2.0, 7, 9, 1.0))
             t = PhyloTree(root)
             rng = Random.Xoshiro(1)
             i2 = node_by_source_id(t, 2)
@@ -75,12 +76,12 @@
         end
 
         @testset "a unary chain, as pruning leaves behind, converts unchanged" begin
-            root = MutationLoadDynamics.BinaryNode(
-                MutationLoadDynamics.NonMarkovCell(1, 0.0, 0, 1.0))
-            MutationLoadDynamics.leftchild!(root,
-                MutationLoadDynamics.NonMarkovCell(2, 1.0, 1, 1.0))
-            MutationLoadDynamics.leftchild!(root.left,
-                MutationLoadDynamics.NonMarkovCell(3, 2.0, 1, 1.0))
+            root = NonMarkovEvolution.BinaryNode(
+                NonMarkovEvolution.NonMarkovCell(1, 0.0, 0, 0, 1.0))
+            NonMarkovEvolution.left_child!(root,
+                NonMarkovEvolution.NonMarkovCell(2, 1.0, 1, 1, 1.0))
+            NonMarkovEvolution.left_child!(root.left,
+                NonMarkovEvolution.NonMarkovCell(3, 2.0, 1, 2, 1.0))
             t = PhyloTree(root)
             @test nnodes(t) == 3
             @test leaves(t) == [node_by_source_id(t, 3)]
@@ -88,12 +89,12 @@
         end
 
         @testset "an end-to-end run on a converted tree" begin
-            root = MutationLoadDynamics.BinaryNode(
-                MutationLoadDynamics.NonMarkovCell(1, 0.0, 0, 1.0))
-            MutationLoadDynamics.leftchild!(root,
-                MutationLoadDynamics.NonMarkovCell(2, 1.0, 6, 1.0))
-            MutationLoadDynamics.rightchild!(root,
-                MutationLoadDynamics.NonMarkovCell(3, 1.0, 6, 1.0))
+            root = NonMarkovEvolution.BinaryNode(
+                NonMarkovEvolution.NonMarkovCell(1, 0.0, 0, 0, 1.0))
+            NonMarkovEvolution.left_child!(root,
+                NonMarkovEvolution.NonMarkovCell(2, 1.0, 6, 6, 1.0))
+            NonMarkovEvolution.right_child!(root,
+                NonMarkovEvolution.NonMarkovCell(3, 1.0, 6, 6, 1.0))
             t = PhyloTree(root)
             a = toy_assembly(nchrom = 2, len = 1000)
             res = simulate_cnas(t, a, CNAModel(rate = FromEdgeMutations(0.5)); seed = 61)
@@ -101,6 +102,45 @@
                 @test check_invariants(profile(res, i))
             end
             @test replay(res) == [profile(res, i) for i in 1:nnodes(t)]
+        end
+
+        # A complete binary lineage tree of `depth` divisions as NonMarkovEvolution
+        # BinaryNodes; `total_drivers` is kept consistent with the path from the root.
+        function nme_tree(depth)
+            M = NonMarkovEvolution
+            root = M.BinaryNode(M.NonMarkovCell(1, 0.0, 0, 0, 1.0))
+            next = Ref(2)
+            frontier = [root]
+            for d in 1:depth
+                newf = eltype(frontier)[]
+                for nd in frontier
+                    tot = nd.data.total_drivers
+                    M.left_child!(nd, M.NonMarkovCell(next[], Float64(d), d % 3, tot + d % 3, 1.0))
+                    next[] += 1
+                    M.right_child!(nd, M.NonMarkovCell(next[], d + 0.5, (d + 1) % 3, tot + (d + 1) % 3, 1.0))
+                    next[] += 1
+                    push!(newf, nd.left, nd.right)
+                end
+                frontier = newf
+            end
+            return root
+        end
+
+        @testset "sampling with the real sampler commutes exactly (per_node)" begin
+            root = nme_tree(5)                                   # 32 leaves
+            s = NonMarkovEvolution.sample_leaves(root, 6; seed = 9)
+            full, sub = PhyloTree(root), PhyloTree(s)
+            @test nnodes(sub) < nnodes(full)
+            m = CNAModel(rate = FromEdgeMutations(1.0), target = CNWeighted(),
+                         extent = ExtentMixture(p_arm = 0.2), initial = TruncalCNAs(2),
+                         wgd = RateWGD(PerDivision(0.2)))
+            a = toy_assembly(nchrom = 3, len = 2000)
+            rf = simulate_cnas(full, a, m; seed = 62, rng_mode = :per_node)
+            rs = simulate_cnas(sub, a, m; seed = 62, rng_mode = :per_node)
+            for l in leaves(sub)
+                sid = node(sub, l).source_id
+                @test profile(rs, l) == profile(rf, node_by_source_id(full, sid))
+            end
         end
     end
 end

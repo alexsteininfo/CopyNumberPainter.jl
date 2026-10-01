@@ -31,17 +31,21 @@ res = simulate_cnas(tree, assembly, model; seed = 7)
 grid = BinGrid(assembly, 5_000_000)   # coarser than the 500kb DLP+ default, for speed
 mat  = CNMatrix(res, grid)            # leaves by default — the observable cells
 
-outdir = mktempdir()
+# Files go to examples/output/ (git-ignored), or to the directory given as the first
+# argument, and are kept after the script ends so the printed commands can be run.
+outdir = mkpath(get(ARGS, 1, joinpath(@__DIR__, "output")))
 write_medicc2(joinpath(outdir, "cells.tsv"), mat)                 # input: leaves only
 write_profiles(joinpath(outdir, "truth_profiles.tsv"), res)       # truth: every node
 write_events(joinpath(outdir, "truth_events.tsv"), res)           # truth: every event
 write_newick(joinpath(outdir, "tree.nwk"), tree; branchlength = :divisions)
+save_simulation(joinpath(outdir, "run"), res)   # the whole run: reload with load_simulation
 
 println("max copy number in the exported matrix: ", max_cn(mat),
         " (MEDICC2's alphabet caps at 8)")
-println("Wrote cells.tsv, truth_profiles.tsv, truth_events.tsv, tree.nwk to ", outdir)
+println("Wrote cells.tsv, truth_profiles.tsv, truth_events.tsv, tree.nwk and the run_* bundle to ", outdir)
 println("\nFrom the shell:  medicc2 ", joinpath(outdir, "cells.tsv"), " ",
         joinpath(outdir, "medicc2_out"), " --events -j 8")
 println("\nOnly cells.tsv (the leaves) is MEDICC2 input. truth_profiles.tsv and",
         "\ntruth_events.tsv hold the ancestral ground truth to compare its output",
-        "\nagainst — never feed those in.")
+        "\nagainst — never feed those in. The run_* bundle (save_simulation) holds the",
+        "\nsame truth in one reloadable set: load_simulation(", repr(joinpath(outdir, "run")), ").")

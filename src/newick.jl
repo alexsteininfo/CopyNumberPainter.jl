@@ -21,7 +21,9 @@ default: an implicit convention is the kind of thing that becomes invisible and 
 |:---|:---|:---|
 | `:divisions` | `edge_divisions` | [`PerDivision`](@ref) |
 | `:mutations` | `edge_mutations` | [`FromEdgeMutations`](@ref) |
-| `:time` | `birthtime`, by cumulative sum from the root, plus `edge_divisions = 1` | [`PerTime`](@ref), and [`PerDivision`](@ref) treating each edge as one division |
+| `:time` | `birthtime`, by cumulative sum from the root | [`PerTime`](@ref) |
+
+A time tree carries no division count: an edge's elapsed time — the interdivision time on a lineage tree — is [`edge_time`](@ref), and `PerDivision` throws on it rather than assuming one division per edge.
 
 Fields not implied by the chosen mode stay `nothing`, and each rate rule throws a
 named error when the field it needs is absent.
@@ -57,127 +59,164 @@ meaning of `branchlength`.
 read_newick(io::IO; branchlength::Symbol = :unset) =
     parse_newick(read(io, String); branchlength = branchlength)
 read_newick(path::AbstractString; branchlength::Symbol = :unset) =
-    open(io -> read_newick(io; branchlength = branchlength), path)
+    _with_input(io -> read_newick(io; branchlength = branchlength), path)
 
-function _parse_raw(str::AbstractString)
-    s = collect(str)
-    n = length(s)
-    nodes = _RawNode[]
-    pos = 1
+const _NEWICK_DELIMS = ('(', ')', ',', ':', ';', '[')
 
-    function skipspace!()
-        while pos <= n
-            c = s[pos]
-            if isspace(c)
-                pos += 1
-            elseif c == '['
-                depth = 0
-                while pos <= n
-                    s[pos] == '[' && (depth += 1)
-                    s[pos] == ']' && (depth -= 1)
-                    pos += 1
-                    depth == 0 && break
-                end
-                depth == 0 || throw(ArgumentError("unterminated comment in newick input"))
-            else
-                return
+# Read position over the input. A struct rather than closures over a local `pos`:
+# a captured, reassigned variable is boxed by Julia, which makes the parser
+# type-unstable.
+mutable struct _Cursor
+    s::Vector{Char}
+    pos::Int
+end
+
+_eof(c::_Cursor) = c.pos > length(c.s)
+_peek(c::_Cursor) = c.s[c.pos]
+
+function _skipspace!(c::_Cursor)
+    while !_eof(c)
+        ch = _peek(c)
+        if isspace(ch)
+            c.pos += 1
+        elseif ch == '['
+            depth = 0
+            while !_eof(c)
+                _peek(c) == '[' && (depth += 1)
+                _peek(c) == ']' && (depth -= 1)
+                c.pos += 1
+                depth == 0 && break
             end
+            depth == 0 || throw(ArgumentError("unterminated comment in newick input"))
+        else
+            return
         end
     end
+end
 
-    function readlabel!()
-        skipspace!()
-        pos > n && return nothing
-        if s[pos] == '\''
-            pos += 1
-            buf = Char[]
-            while true
-                pos <= n || throw(ArgumentError("unterminated quoted label in newick input"))
-                if s[pos] == '\''
-                    if pos + 1 <= n && s[pos + 1] == '\''
-                        push!(buf, '\'')
-                        pos += 2
-                    else
-                        pos += 1
-                        break
-                    end
+function _readlabel!(c::_Cursor)
+    _skipspace!(c)
+    _eof(c) && return nothing
+    if _peek(c) == '\''
+        c.pos += 1
+        buf = Char[]
+        while true
+            _eof(c) && throw(ArgumentError("unterminated quoted label in newick input"))
+            ch = _peek(c)
+            if ch == '\''
+                if c.pos + 1 <= length(c.s) && c.s[c.pos + 1] == '\''
+                    push!(buf, '\'')
+                    c.pos += 2
                 else
-                    push!(buf, s[pos])
-                    pos += 1
+                    c.pos += 1
+                    break
                 end
+            else
+                push!(buf, ch)
+                c.pos += 1
             end
-            return String(buf)
         end
-        start = pos
-        while pos <= n && !(s[pos] in ('(', ')', ',', ':', ';', '[')) && !isspace(s[pos])
-            pos += 1
-        end
-        return pos > start ? String(s[start:pos - 1]) : nothing
+        return String(buf)
     end
-
-    function readlength!()
-        skipspace!()
-        (pos <= n && s[pos] == ':') || return nothing
-        pos += 1
-        skipspace!()
-        start = pos
-        while pos <= n && (isdigit(s[pos]) || s[pos] in ('.', '-', '+', 'e', 'E'))
-            pos += 1
-        end
-        pos > start || throw(ArgumentError("expected a number after ':' in newick input"))
-        txt = String(s[start:pos - 1])
-        val = tryparse(Float64, txt)
-        val === nothing && throw(ArgumentError("could not parse branch length '$txt'"))
-        val >= 0 || throw(ArgumentError("negative branch length $val is not allowed"))
-        return val
+    start = c.pos
+    while !_eof(c) && !(_peek(c) in _NEWICK_DELIMS) && !isspace(_peek(c))
+        c.pos += 1
     end
+    return c.pos > start ? String(c.s[start:c.pos - 1]) : nothing
+end
 
-    function parsesubtree!(parent::Union{Int,Nothing})
-        skipspace!()
-        pos <= n || throw(ArgumentError("unexpected end of newick input"))
+function _readlength!(c::_Cursor)
+    _skipspace!(c)
+    (!_eof(c) && _peek(c) == ':') || return nothing
+    c.pos += 1
+    _skipspace!(c)
+    start = c.pos
+    while !_eof(c) && (isdigit(_peek(c)) || _peek(c) in ('.', '-', '+', 'e', 'E'))
+        c.pos += 1
+    end
+    c.pos > start || throw(ArgumentError("expected a number after ':' in newick input"))
+    txt = String(c.s[start:c.pos - 1])
+    val = tryparse(Float64, txt)
+    val === nothing && throw(ArgumentError("could not parse branch length '$txt'"))
+    val >= 0 || throw(ArgumentError("negative branch length $val is not allowed"))
+    return val
+end
+
+# A node's trailing label and branch length, read once its subtree is complete.
+function _finish_node!(c::_Cursor, nodes::Vector{_RawNode}, i::Int)
+    nodes[i].label = _readlabel!(c)
+    nodes[i].brlen = _readlength!(c)
+    return nothing
+end
+
+# Called right after '(' or ',': the next thing must begin a subtree.
+function _check_element_start(c::_Cursor, after_open::Bool)
+    _eof(c) && return nothing              # reported as an unexpected end on the next read
+    ch = _peek(c)
+    after_open && ch == ')' && throw(ArgumentError("empty branch set '()' in newick input"))
+    ch in (',', ')') && throw(ArgumentError(
+        "empty element in a newick branch set at position $(c.pos): a stray, leading or trailing comma"))
+    return nothing
+end
+
+# Iterative descent. `open` holds the internal nodes whose ')' is still ahead, so
+# nesting depth costs heap, not stack: a 10^5-deep caterpillar parses like any other.
+function _parse_raw(str::AbstractString)
+    c = _Cursor(collect(str), 1)
+    nodes = _RawNode[]
+    _skipspace!(c)
+    _eof(c) && throw(ArgumentError("empty newick input"))
+    _peek(c) == ';' && throw(ArgumentError("empty newick tree ';' has no root node"))
+
+    open = Int[]
+    parent = nothing                       # parent of the next subtree to begin
+    done = false
+    while !done
+        _skipspace!(c)
+        _eof(c) && throw(ArgumentError("unexpected end of newick input"))
         push!(nodes, _RawNode(parent, Int[], nothing, nothing))
         me = length(nodes)
         parent === nothing || push!(nodes[parent].children, me)
-        if s[pos] == '('
-            pos += 1
-            skipspace!()
-            (pos <= n && s[pos] == ')') &&
-                throw(ArgumentError("empty branch set '()' in newick input"))
-            while true
-                skipspace!()
-                (pos <= n && (s[pos] == ',' || s[pos] == ')')) &&
-                    throw(ArgumentError(
-                        "empty element in a newick branch set at position $pos: a stray, leading or trailing comma"))
-                parsesubtree!(me)
-                skipspace!()
-                pos <= n || throw(ArgumentError("unbalanced parentheses in newick input"))
-                if s[pos] == ','
-                    pos += 1
-                elseif s[pos] == ')'
-                    pos += 1
-                    break
-                else
-                    throw(ArgumentError("expected ',' or ')' in newick input, found '$(s[pos])'"))
-                end
-            end
-            isempty(nodes[me].children) && throw(ArgumentError("empty branch set '()' in newick input"))
+        if _peek(c) == '('
+            c.pos += 1
+            _skipspace!(c)
+            _check_element_start(c, true)
+            push!(open, me)
+            parent = me
+            continue                       # descend into the first child
         end
-        nodes[me].label = readlabel!()
-        nodes[me].brlen = readlength!()
-        return me
+        _finish_node!(c, nodes, me)        # a leaf
+        # Climb: each ')' completes an open node; a ',' starts its next child.
+        while true
+            if isempty(open)
+                done = true
+                break
+            end
+            _skipspace!(c)
+            _eof(c) && throw(ArgumentError("unbalanced parentheses in newick input"))
+            ch = _peek(c)
+            if ch == ','
+                c.pos += 1
+                _skipspace!(c)
+                _check_element_start(c, false)
+                parent = open[end]
+                break
+            elseif ch == ')'
+                c.pos += 1
+                _finish_node!(c, nodes, pop!(open))
+            else
+                throw(ArgumentError("expected ',' or ')' in newick input, found '$ch'"))
+            end
+        end
     end
 
-    skipspace!()
-    pos <= n || throw(ArgumentError("empty newick input"))
-    s[pos] == ';' && throw(ArgumentError("empty newick tree ';' has no root node"))
-    parsesubtree!(nothing)
-    skipspace!()
-    (pos <= n && s[pos] == ';') ||
+    _skipspace!(c)
+    (!_eof(c) && _peek(c) == ';') ||
         throw(ArgumentError("newick input must end with ';'" *
-            (pos <= n ? " but continues with '$(s[pos])'" : "")))
-    pos += 1
-    skipspace!()
-    pos > n || throw(ArgumentError("trailing content after ';' in newick input"))
+            (_eof(c) ? "" : " but continues with '$(_peek(c))'")))
+    c.pos += 1
+    _skipspace!(c)
+    _eof(c) || throw(ArgumentError("trailing content after ';' in newick input"))
     return nodes
 end
 
@@ -197,7 +236,6 @@ function _raw_to_tree(raw::Vector{_RawNode}, mode::Symbol)
             else
                 pbt = birthtimes[nd.parent]
                 birthtimes[i] = (pbt === nothing || nd.brlen === nothing) ? nothing : pbt + nd.brlen
-                divisions[i] = 1
             end
         elseif nd.parent !== nothing && nd.brlen !== nothing
             v = nd.brlen
@@ -227,10 +265,10 @@ function _raw_preorder(raw::Vector{_RawNode})
     return out
 end
 
-const _NEWICK_SPECIAL = ('(', ')', ',', ':', ';', '[', ']', '\'', ' ')
+const _NEWICK_SPECIAL = ('(', ')', ',', ':', ';', '[', ']', '\'')
 
 _quote_label(name::AbstractString) =
-    any(c -> c in _NEWICK_SPECIAL, name) ? "'" * replace(name, "'" => "''") * "'" : name
+    any(c -> c in _NEWICK_SPECIAL || isspace(c), name) ? "'" * replace(name, "'" => "''") * "'" : name
 
 function _emit_name(t::PhyloTree, i::Integer, labels::Symbol)
     labels === :label && return cellname(t, i)
@@ -265,7 +303,8 @@ end
 Render `tree` as a newick string.
 
 `branchlength` chooses **which** quantity the single branch-length field carries —
-`:time`, `:divisions` or `:mutations` — and throws if any non-root node lacks it. The
+`:time`, `:divisions` or `:mutations` — and throws if any non-root node lacks it.
+`:none` writes the topology and names without lengths. The
 choice is explicit on write for the same reason it is on read: newick cannot carry
 both real time and a division count, and a silent convention is a bug waiting to
 happen.
@@ -275,10 +314,13 @@ happen.
 `cell_<upstream id>`.
 """
 function newick_string(t::PhyloTree; branchlength::Symbol = :unset, labels::Symbol = :label)
-    branchlength in BRANCHLENGTH_MODES || throw(ArgumentError(
-        "branchlength must be one of $BRANCHLENGTH_MODES; got :$branchlength"))
+    branchlength in (BRANCHLENGTH_MODES..., :none) || throw(ArgumentError(
+        "branchlength must be one of $BRANCHLENGTH_MODES, or :none to write no lengths; got :$branchlength"))
     labels in (:label, :id, :source_id) || throw(ArgumentError(
         "labels must be :label, :id or :source_id; got :$labels"))
+    # Leaves only: internal labels are often support values ("100") and legitimately repeat.
+    lv = leaves(t)
+    _check_unique_names([_emit_name(t, i, labels) for i in lv], lv)
     io = IOBuffer()
     _write_subtree(io, t, treeroot(t), branchlength, labels)
     print(io, ';')
@@ -303,7 +345,7 @@ function _write_subtree(io::IO, t::PhyloTree, start::Int, mode::Symbol, labels::
         else
             !isempty(kids) && print(io, ')')
             print(io, _quote_label(_emit_name(t, i, labels)))
-            if !isroot(t, i)
+            if mode !== :none && !isroot(t, i)
                 print(io, ':', _emit_length(t, i, mode))
             end
         end
@@ -320,6 +362,9 @@ Write `tree` in newick format to an `IO` or a file path. See
 write_newick(io::IO, t::PhyloTree; branchlength::Symbol = :unset, labels::Symbol = :label) =
     print(io, newick_string(t; branchlength = branchlength, labels = labels))
 
-write_newick(path::AbstractString, t::PhyloTree; branchlength::Symbol = :unset,
-             labels::Symbol = :label) =
-    open(io -> write_newick(io, t; branchlength = branchlength, labels = labels), path, "w")
+function write_newick(path::AbstractString, t::PhyloTree; branchlength::Symbol = :unset,
+                      labels::Symbol = :label)
+    # Rendered before the file is opened, so a refused name cannot truncate it.
+    str = newick_string(t; branchlength = branchlength, labels = labels)
+    _with_io(io -> print(io, str), path)
+end

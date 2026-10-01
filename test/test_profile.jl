@@ -152,4 +152,11 @@
         @test CopyNumberEvolution.mean_cn([S(1, 50, 2), S(51, 100, 0)], 100) ≈ 1.0
         @test CopyNumberEvolution.mean_cn([S(1, 100, 3)], 100) ≈ 3.0
     end
+
+    @testset "canonicalize! merges long equal runs in one pass" begin
+        S = CopyNumberEvolution.Segment
+        segs = [S(1, 2, 2), S(3, 3, 2), S(4, 6, 1), S(7, 7, 1), S(8, 8, 1), S(9, 10, 2)]
+        canonicalize!(segs)
+        @test segs == [S(1, 3, 2), S(4, 8, 1), S(9, 10, 2)]
+    end
 end

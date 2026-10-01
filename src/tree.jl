@@ -20,7 +20,7 @@ error when it is absent.
 - `edge_mutations::Union{Int,Nothing}` — mutations acquired on the incoming edge.
 - `label::Union{String,Nothing}` — taxon name, e.g. from a newick file.
 - `source_id::Union{Int,Nothing}` — identifier in the upstream numbering, e.g. a
-  `MutationLoadDynamics.jl` cell id. Preserved so that "the edge into cell *i*" stays
+  `NonMarkovEvolution.jl` cell id. Preserved so that "the edge into cell *i*" stays
   expressible after upstream leaf sampling has made those ids sparse.
 """
 struct PhyloNode
@@ -44,14 +44,19 @@ tree-similarity metrics the integer leaf labels they want. Upstream identifiers
 survive on each node's `source_id` (see [`PhyloNode`](@ref)).
 
 Construction validates that ids are dense, that there is exactly one root, that
-`parent` and `children` agree, and that every node is reachable from the root.
+`parent` and `children` agree, that every node is reachable from the root, and
+that every `source_id` is unique across the tree.
 
 Prefer [`phylotree`](@ref) to build one from a parent vector.
+
+Its fields are part of the public API and are covered by semantic versioning.
 """
 struct PhyloTree
     nodes::Vector{PhyloNode}
     root::Int
     leaves::Vector{Int}
+    label_index::Dict{String,Int}
+    source_index::Dict{Int,Int}
 
     function PhyloTree(nodes::Vector{PhyloNode})
         n = length(nodes)
@@ -88,7 +93,21 @@ struct PhyloTree
         all(seen) || throw(ArgumentError(
             "nodes $(findall(!, seen)) are not reachable from the root"))
         lv = [nd.id for nd in nodes if isempty(nd.children)]
-        return new(nodes, roots[1], lv)
+        label_index = Dict{String,Int}()
+        source_index = Dict{Int,Int}()
+        for nd in nodes
+            if nd.label !== nothing
+                # 0 marks a shared label: inferred trees repeat support values ("100")
+                label_index[nd.label] = haskey(label_index, nd.label) ? 0 : nd.id
+            end
+            if nd.source_id !== nothing
+                haskey(source_index, nd.source_id) && throw(ArgumentError(
+                    "source_id $(nd.source_id) is used by nodes $(source_index[nd.source_id]) " *
+                    "and $(nd.id); upstream ids must be unique"))
+                source_index[nd.source_id] = nd.id
+            end
+        end
+        return new(nodes, roots[1], lv, label_index, source_index)
     end
 end
 
@@ -348,25 +367,29 @@ end
     node_by_source_id(tree, sid) -> Int
 
 Dense id of the node whose `source_id` is `sid` — the upstream numbering, e.g. a
-`MutationLoadDynamics.jl` cell id.
+`NonMarkovEvolution.jl` cell id. Throws `ArgumentError` if no node carries that id.
 """
 function node_by_source_id(t::PhyloTree, sid::Integer)
-    for nd in t.nodes
-        nd.source_id == sid && return nd.id
-    end
-    throw(ArgumentError("no node with source_id $sid"))
+    i = get(t.source_index, Int(sid), nothing)
+    i === nothing && throw(ArgumentError("no node with source_id $sid"))
+    return i
 end
 
 """
     node_by_label(tree, label) -> Int
 
-Dense id of the node whose `label` is `label`.
+Dense id of the node whose `label` is `label`. Throws `ArgumentError` if no node
+carries that label, or if multiple nodes do (ambiguous): inferred trees may repeat
+support values like "100" on independent branches, so ambiguous labels are rejected
+rather than returning an arbitrary node. Name the node by id or source_id instead.
 """
 function node_by_label(t::PhyloTree, label::AbstractString)
-    for nd in t.nodes
-        nd.label == label && return nd.id
-    end
-    throw(ArgumentError("no node labelled $label"))
+    i = get(t.label_index, label, nothing)
+    i === nothing && throw(ArgumentError("no node labelled $label"))
+    i == 0 && throw(ArgumentError(
+        "label $label is shared by nodes $(findall(nd -> nd.label == label, t.nodes)); " *
+        "name the node by id or source_id instead"))
+    return i
 end
 
 """
@@ -376,10 +399,27 @@ Stable output name for node `i`: its `label` if it has one, otherwise
 `"\$(prefix)_\$(i)"`.
 
 Newick writing and MEDICC2 export both go through this, so a cell's `sample_id` in an
-exported matrix always matches its leaf label in the exported tree.
+exported matrix always matches its leaf label in the exported tree. Exported leaf and row
+names must be unique; `CNMatrix` and `newick_string` throw otherwise.
 """
 cellname(t::PhyloTree, i::Integer; prefix::AbstractString = "cell") =
     something(t.nodes[i].label, "$(prefix)_$(i)")
+
+# Throw if two of `ids` would be written under the same name. A name is a row's
+# identity in every exported file, so a collision silently merges two cells.
+function _check_unique_names(names::AbstractVector{<:AbstractString},
+                             ids::AbstractVector{<:Integer})
+    first_id = Dict{String,Int}()
+    for (nm, id) in zip(names, ids)
+        prev = get(first_id, nm, nothing)
+        prev === nothing || throw(ArgumentError(
+            "nodes $prev and $id would both be written as \"$nm\". Output names come " *
+            "from cellname (a node's label, else \"cell_<id>\"), so give every exported " *
+            "node a unique label, or none"))
+        first_id[nm] = id
+    end
+    return nothing
+end
 
 Base.show(io::IO, t::PhyloTree) = print(io, "PhyloTree(", nnodes(t), " nodes, ",
                                         length(t.leaves), " leaves, root ", t.root, ")")
@@ -387,7 +427,7 @@ Base.show(io::IO, t::PhyloTree) = print(io, "PhyloTree(", nnodes(t), " nodes, ",
 """
     founder_mutations(root) -> Int
 
-Number of mutations the founder cell of a `MutationLoadDynamics.jl` lineage tree
+Number of mutations the founder cell of a `NonMarkovEvolution.jl` lineage tree
 acquired at its own birth.
 
 The founder has no incoming edge, so those mutations cannot be attributed to one, and
@@ -395,6 +435,19 @@ The founder has no incoming edge, so those mutations cannot be attributed to one
 translated into copy-number alterations, feed this to
 `CNAModel(initial = TruncalCNAs(founder_mutations(root)))`.
 
-Requires `MutationLoadDynamics` to be loaded; it is provided by a package extension.
+Requires `NonMarkovEvolution` to be loaded; it is provided by a package extension.
 """
 function founder_mutations end
+
+"""
+    NodeRef(tree[, id])
+
+A handle on one node of a [`PhyloTree`](@ref), defaulting to the root, for generic tree
+tooling. Load `AbstractTrees.jl` and it implements that interface, so `print_tree`,
+`PreOrderDFS`, `Leaves` and friends work on a `PhyloTree`.
+"""
+struct NodeRef
+    tree::PhyloTree
+    id::Int
+end
+NodeRef(t::PhyloTree) = NodeRef(t, treeroot(t))

@@ -19,10 +19,12 @@ assembly = GenomeAssembly("hemi", :male,
 
 tree = phylotree([nothing, 1, 1, 1]; edge_divisions = [nothing, 1, 1, 1])
 
-# A high rate and a generous chromosome-loss probability, so nullisomy is likely unless
-# something prevents it.
+# A high rate, generous chromosome-loss probability, and a UniformChromosome target
+# so nullisomy is likely unless something prevents it. Uniform targeting keeps
+# proposing losses on chr1 until it is lost, which is what makes the contrast
+# with RejectAndRedraw visible.
 settings = (rate = PerDivision(3.0), extent = ExtentMixture(p_chromosome = 0.5),
-            kind = GainLoss(0.3))
+            kind = GainLoss(0.3), target = UniformChromosome())
 
 nullisomic(res) = count(leaves(res.tree)) do l
     any(sg -> sg.cn == 0, slot_segments(profile(res, l), 1, 1))
@@ -40,12 +42,13 @@ println("RejectAndRedraw():  ", nullisomic(res_reject), "/", length(leaves(tree)
         " (", rejection_count(res_reject), " total)")
 
 println("\nSame tree, same model, same seed — the only difference is the viability rule.",
-        "\nRejectAndRedraw() blocks every proposal that would zero out chr1 and redraws",
-        "\ninstead, so no impossible cell reaches the output. But this makes the realised",
-        "\nalteration distribution conditional on viability, not the raw proposal",
-        "\ndistribution — report `rejection_count(res)` whenever it is non-zero.",
-        "\n\nNote also that the default `min_total_cn = 1` forbids homozygous deletions of",
-        "\nANY size on a diploid chromosome, not only whole-chromosome loss; see",
-        "\ndocs/src/limitations.md if focal biallelic loss should be permitted instead.")
+        "\nRejectAndRedraw() blocks every proposal that would reduce any chromosome to total",
+        "\ncopy number 0 (the `min_total_cn = 1` constraint) and redraws instead, so no",
+        "\nimpossible cell reaches the output. But this makes the realised alteration",
+        "\ndistribution conditional on viability, not the raw proposal distribution —",
+        "\nreport `rejection_count(res)` whenever it is non-zero.",
+        "\n\nNote that `min_total_cn = 1` forbids homozygous deletions of ANY size on a",
+        "\ndiploid chromosome, not only whole-chromosome loss; see docs/src/limitations.md",
+        "\nif focal biallelic loss should be permitted instead.")
 
 # Next: example 05 reads a tree from a newick file and exports for MEDICC2.

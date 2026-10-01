@@ -3,7 +3,7 @@
 Forward simulation of somatic copy-number alterations along a cell-lineage tree.
 
 Give it a tree — simulated by
-[`MutationLoadDynamics.jl`](https://github.com/alexander-stein/MutationLoadDynamics.jl)
+[`NonMarkovEvolution.jl`](https://github.com/alexander-stein/NonMarkovEvolution.jl)
 or read from a newick file — and it draws copy-number alterations along the edges from
 a diploid or given root state, returning the allele-specific profile of **every** node
 together with a **complete log** of the events that produced it. Profiles then project
@@ -20,9 +20,9 @@ using Pkg
 Pkg.add(url = "https://github.com/alexander-stein/CopyNumberEvolution.jl")
 ```
 
-Dependencies are deliberately minimal — `Random`, `Distributions`, `StatsBase` — so
+Dependencies are deliberately minimal — `Random`, `Distributions`, `StatsBase`, `CodecZlib` and `TOML` — so
 that depending on this package for its types stays cheap.
-`MutationLoadDynamics.jl` is a *weak* dependency: load it alongside and the tree
+`NonMarkovEvolution.jl` is a *weak* dependency: load it alongside and the tree
 converter appears; leave it out and nothing is missing but the converter.
 
 ## Quickstart
@@ -31,14 +31,19 @@ converter appears; leave it out and nothing is missing but the converter.
 using CopyNumberEvolution
 
 assembly = hg38(:female)
-tree = read_newick("lineage.nwk"; branchlength = :divisions)
+
+# A small lineage tree: root -> two divisions -> four leaves. Real trees come from
+# NonMarkovEvolution.jl or a newick file:
+#   tree = read_newick("lineage.nwk"; branchlength = :divisions)
+tree = phylotree([nothing, 1, 1, 2, 2, 3, 3];
+                 edge_divisions = [nothing, 1, 1, 1, 1, 1, 1])
 
 model = CNAModel(
     rate      = PerDivision(0.5),                              # Poisson(λ · divisions)
     target    = CNWeighted(1.0),                               # gains beget gains
     extent    = ExtentMixture(p_chromosome = 0.05, p_arm = 0.15),
     kind      = GainLoss(0.6),                                 # 60% gains
-    wgd       = ScheduledWGD(mrca(tree, [12, 34]) => 1),       # one doubling, exactly there
+    wgd       = ScheduledWGD(mrca(tree, [4, 5]) => 1),         # one doubling, exactly there
     viability = RejectAndRedraw(min_total_cn = 1),
     initial   = TruncalCNAs(4),                                # four clonal alterations
 )
@@ -64,12 +69,14 @@ write_events("events.tsv", res)
 - [Concepts](concepts.md) — how a genome is represented, and the four things that can
   happen to it.
 - [Input: trees](trees.md) — `PhyloTree`, the three meanings of a newick branch
-  length, and the `MutationLoadDynamics.jl` bridge.
+  length, and the `NonMarkovEvolution.jl` bridge.
 - [The alteration model](model.md) — every injectable component, and the scientific
   consequences of the defaults.
 - [Output](output.md) — profiles, the event log, replay, and bin projection.
 - [MEDICC2 interoperability](interop.md) — exporting for the reference method, and the
   comparison that makes possible.
+- [MEDICC2 benchmark](benchmark.md) — running a simulation-to-MEDICC2 benchmark, and what
+  the truth does and does not contain.
 - [Limitations and open questions](limitations.md) — what is deliberately out of
   scope, and what is still undecided.
 

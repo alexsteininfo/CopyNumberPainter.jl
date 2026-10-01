@@ -16,7 +16,7 @@
     @testset "CNAModel defaults" begin
         m = CNAModel()
         @test m.rate isa PerDivision
-        @test m.target isa UniformChromosome
+        @test m.target isa CNWeighted
         @test m.extent isa ExtentMixture
         @test m.kind isa GainLoss
         @test m.wgd isa NoWGD
@@ -183,16 +183,83 @@
         end
     end
 
+    @testset "the result carries its own root state and event index" begin
+        t = bal()
+        m = CNAModel(rate = PerDivision(3.0), initial = TruncalCNAs(3; wgd = 1))
+        res = simulate_cnas(t, A(), m; seed = 19)
+        @test res.root_base == diploid(A())                 # before the truncal events
+        @test sum(length, res.event_ranges) == nevents(res)
+        for i in 1:nnodes(t)
+            @test all(e.node == i for e in events_on(res, i))
+            @test events_on(res, i) == [e for e in res.events if e.node == i]
+        end
+        below(i) = Set(j for j in preorder(t) if j != i && i in ancestors(t, j))
+        for i in 1:nnodes(t)
+            @test events_below(res, i) == [e for e in res.events if e.node in below(i)]
+        end
+        # replay no longer consults the model
+        stripped = CopyNumberEvolution.CNAEvolution(res.tree, res.assembly, nothing,
+            res.profiles, res.events, res.event_ranges, res.root_base, res.rejections,
+            res.seed, res.rng_mode, res.retain_internal)
+        @test replay(stripped) == [profile(res, i) for i in 1:nnodes(t)]
+    end
+
+    @testset "_event_ranges rejects logs that replay could not trust" begin
+        ev(node, order) = LoggedEvent(node, order, WholeGenomeDoubling(:multiply))
+        er = CopyNumberEvolution._event_ranges
+        @test er([ev(1, 1), ev(2, 1), ev(2, 2), ev(3, 1)], 4) == [1:1, 2:3, 4:4, 1:0]
+        @test_throws ArgumentError er([ev(2, 1), ev(3, 1), ev(2, 2)], 3)   # interleaved
+        @test_throws ArgumentError er([ev(1, 1), ev(5, 1)], 3)             # node out of range
+        @test_throws ArgumentError er([ev(2, 2), ev(2, 1)], 3)             # orders [2, 1]
+    end
+
+    @testset "proposals that would change nothing are redrawn, not logged" begin
+        a = toy_assembly(nchrom = 1, len = 1000)
+        start = diploid(a)
+        apply!(start, SegmentalCNA(1, 1, 1, 600, -1, :focal))     # hap1 1:600 absent
+        t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
+        m = CNAModel(rate = CustomRate((tr, i, rng) -> 50), target = (p, rng) -> (1, 1),
+                     extent = ExtentMixture(lengthdist = Distributions.Uniform(10.0, 100.0)),
+                     viability = AllowAll(), initial = Given(start))
+        res = simulate_cnas(t, a, m; seed = 48)
+        @test nevents(res) == 50
+        p = copy(start)
+        for le in events_on(res, 2)
+            before = copy(p)
+            apply!(p, le.event)
+            @test p != before                           # every logged event did something
+        end
+        @test get(res.rejections, :no_effect, 0) > 0
+    end
+
+    @testset "a genome with no material left is an error, not a hang" begin
+        a = toy_assembly(nchrom = 1, len = 100)
+        dead = diploid(a)
+        apply!(dead, SegmentalCNA(1, 1, 1, 100, -1, :chromosome))
+        apply!(dead, SegmentalCNA(1, 2, 1, 100, -1, :chromosome))
+        t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
+        m = CNAModel(rate = CustomRate((tr, i, rng) -> 1), target = UniformChromosome(),
+                     viability = AllowAll(), initial = Given(dead))
+        err = try simulate_cnas(t, a, m; seed = 1); nothing catch e; e end
+        @test err isa ErrorException && occursin("no copy-number material", err.msg)
+    end
+
     @testset "rejections are tallied by reason" begin
         t = bal()
-        # losses only, on a male karyotype: hemizygous chrX and chrY losses get rejected
-        m = CNAModel(rate = PerDivision(4.0), kind = GainLoss(0.0),
+        # mostly losses, on a male karyotype: hemizygous chrX and chrY losses get rejected
+        # UniformChromosome is pinned: CNWeighted never targets deleted material.
+        # Gains are mixed in because losses on already-deleted slots are redrawn as
+        # :no_effect, so pure losses would eventually leave only rejectable ones and
+        # exhaust max_attempts instead of tallying.
+        m = CNAModel(rate = PerDivision(4.0), target = UniformChromosome(),
+                     kind = GainLoss(0.3),
                      extent = ExtentMixture(p_chromosome = 1.0),
                      viability = RejectAndRedraw(min_total_cn = 1, max_attempts = 10_000))
         res = simulate_cnas(t, toy_sex_assembly(:male), m; seed = 11)
         @test rejection_count(res) > 0
         @test haskey(res.rejections, :min_total_cn)
-        @test res.rejections[:min_total_cn] == rejection_count(res)
+        @test res.rejections[:min_total_cn] + get(res.rejections, :no_effect, 0) ==
+              rejection_count(res)
     end
 
     @testset "exhausting max_attempts throws with actionable advice" begin
@@ -213,17 +280,46 @@
         @test occursin("min_total_cn", err.msg)
     end
 
-    @testset "rng_mode = :per_node needs a seed and stays reproducible" begin
+    @testset "rng_mode = :per_node stays reproducible" begin
         t = bal()
         m = CNAModel(rate = PerDivision(2.0))
-        @test_throws ArgumentError simulate_cnas(t, A(), m; rng_mode = :per_node)
         @test_throws ArgumentError simulate_cnas(t, A(), m; seed = 1, rng_mode = :bogus)
+        @test_throws ArgumentError simulate_cnas(t, A(), m; seed = UInt64(typemax(Int)) + 1)
         a = simulate_cnas(t, A(), m; seed = 13, rng_mode = :per_node)
         b = simulate_cnas(t, A(), m; seed = 13, rng_mode = :per_node)
         @test a.events == b.events
         for i in 1:nnodes(t)
             @test check_invariants(profile(a, i))
         end
+    end
+
+    @testset "seeded streams are pinned across Julia versions" begin
+        r = CopyNumberEvolution._stable_rng(UInt64(1))
+        @test rand(r, UInt64) == 0x6bfbe5ada17babc0
+        @test rand(r, UInt64) == 0xd9791c54a38dd5f4
+        @test rand(CopyNumberEvolution._stable_rng(UInt64(1), UInt64(2), UInt64(7)), UInt64) ==
+              0x336c294898a4faba
+    end
+
+    @testset "a run without seed or rng draws and records a seed" begin
+        Random.seed!(123); a = simulate_cnas(bal(), A(), CNAModel(rate = PerDivision(2.0)))
+        Random.seed!(123); b = simulate_cnas(bal(), A(), CNAModel(rate = PerDivision(2.0)))
+        @test a.seed isa Int && a.seed == b.seed && a.events == b.events
+        c = simulate_cnas(bal(), A(), CNAModel(rate = PerDivision(2.0)); seed = a.seed)
+        @test c.events == a.events                        # reproducible from the record alone
+        @test a.rng_mode === :global
+        @test simulate_cnas(bal(), A(), CNAModel(); rng = Random.Xoshiro(1)).seed === nothing
+        @test_throws ArgumentError simulate_cnas(bal(), A(), CNAModel();
+                                                 rng = Random.Xoshiro(1), rng_mode = :per_node)
+        @test simulate_cnas(bal(), A(), CNAModel(); rng_mode = :per_node).rng_mode === :per_node
+    end
+
+    @testset "per_node keys: a missing source_id never collides with a present one" begin
+        # node 2 has no source_id (falls back to dense id 2); node 3's source_id is 2
+        t = phylotree([nothing, 1, 1]; edge_divisions = [nothing, 1, 1],
+                      source_ids = [nothing, nothing, 2])
+        res = simulate_cnas(t, A(), CNAModel(rate = PerDivision(5.0)); seed = 3, rng_mode = :per_node)
+        @test [e.event for e in events_on(res, 2)] != [e.event for e in events_on(res, 3)]
     end
 
     @testset "a unary chain draws once per edge" begin
@@ -254,4 +350,88 @@
         @test occursin("CNAEvolution", sprint(show, res))
         @test occursin("CNAModel", sprint(show, res.model))
     end
+
+
+    @testset "Given rejects a non-canonical profile" begin
+        p = diploid(A())
+        p.segments[1] = [CopyNumberEvolution.Segment(1, 500, 1), CopyNumberEvolution.Segment(501, 1000, 1)]
+        @test_throws ErrorException Given(p)
+    end
+
+    @testset "CNAModel checks component types at construction" begin
+        @test_throws ArgumentError CNAModel(rate = 0.5)
+        @test_throws ArgumentError CNAModel(wgd = 1)
+        @test_throws ArgumentError CNAModel(viability = :none)
+        @test_throws ArgumentError CNAModel(initial = diploid(A()))
+        # the three draws still accept plain functions
+        @test CNAModel(target = (p, rng) -> (1, 1)) isa CNAModel
+    end
+
+    @testset "a custom InitialState needs only initial_profile" begin
+        t = bal()
+        res = simulate_cnas(t, A(), CNAModel(rate = PerDivision(1.0), initial = DoubledChr1()); seed = 18)
+        @test cn_at(slot_segments(profile(res, treeroot(t)), 1, 1), 1) == 2
+        @test replay(res) == [profile(res, i) for i in 1:nnodes(t)]
+        @test initial_profile(TruncalCNAs(3), A()) == diploid(A())
+        @test initial_profile(Diploid(), A()) == diploid(A())
+    end
+
+    @testset "a doubling lands at a uniformly random position on its edge" begin
+        t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
+        m = CNAModel(rate = CustomRate((tr, i, rng) -> 9), wgd = ScheduledWGD(2 => 1),
+                     viability = AllowAll())
+        pos = Int[]
+        for s in 1:600
+            res = simulate_cnas(t, A(), m; seed = s)
+            evs = events_on(res, 2)
+            @test length(evs) == 10
+            @test [e.order for e in evs] == 1:10
+            push!(pos, only(e.order for e in evs if e.event isa WholeGenomeDoubling))
+            s <= 20 && @test replay(res)[2] == profile(res, 2)
+        end
+        @test Set(pos) == Set(1:10)
+        @test sum(pos) / length(pos) ≈ 5.5 atol = 0.4
+    end
+
+    @testset "adding a doubling leaves other edges' draws unchanged (per_node)" begin
+        t = bal()
+        a = simulate_cnas(t, A(), CNAModel(rate = PerDivision(2.0)); seed = 17, rng_mode = :per_node)
+        b = simulate_cnas(t, A(), CNAModel(rate = PerDivision(2.0), wgd = ScheduledWGD(3 => 1));
+                          seed = 17, rng_mode = :per_node)
+        for i in (1, 2, 4, 5)                    # outside the doubled subtree
+            @test [e.event for e in events_on(a, i)] == [e.event for e in events_on(b, i)]
+        end
+    end
+
+    @testset "TruncalCNAs can place doublings among the truncal events" begin
+        t = bal()
+        m = CNAModel(rate = PerDivision(0.0), initial = TruncalCNAs(4; wgd = 1),
+                     wgd = ScheduledWGD(2 => 1; mode = :increment))
+        seen = Set{Int}()
+        for s in 1:200
+            res = simulate_cnas(t, A(), m; seed = s)
+            root = events_on(res, treeroot(t))
+            @test length(root) == 5
+            d = only(e for e in root if e.event isa WholeGenomeDoubling)
+            @test d.event.mode === :increment               # inherited from the policy
+            push!(seen, d.order)
+            s <= 10 && @test replay(res) == [profile(res, i) for i in 1:nnodes(t)]
+        end
+        @test seen == Set(1:5)
+        # doublings only, and more than one
+        r0 = simulate_cnas(t, A(), CNAModel(rate = PerDivision(0.0), initial = TruncalCNAs(0; wgd = 2)); seed = 1)
+        @test nevents(r0) == 2
+        @test cn_at(slot_segments(profile(r0, treeroot(t)), 1, 1), 1) == 4
+        @test replay(r0) == [profile(r0, i) for i in 1:nnodes(t)]
+        @test TruncalCNAs(2; wgd = 1, mode = :multiply).mode === :multiply
+        @test TruncalCNAs(3).wgd == 0
+        @test_throws ArgumentError TruncalCNAs(2; wgd = -1)
+        @test_throws ArgumentError TruncalCNAs(2; mode = :bogus)
+    end
+    @testset "ExactlyNWGD under per_node warns that it does not commute" begin
+        @test_logs (:warn, r"ExactlyNWGD") simulate_cnas(bal(), A(),
+            CNAModel(wgd = ExactlyNWGD(1)); seed = 1, rng_mode = :per_node)
+        @test_logs simulate_cnas(bal(), A(), CNAModel(wgd = ExactlyNWGD(1)); seed = 1)
+    end
+
 end

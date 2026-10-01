@@ -13,6 +13,9 @@ abstract type CNAEvent end
 const EVENT_SCALES = (:focal, :arm, :chromosome)
 const WGD_MODES = (:multiply, :increment)
 
+_check_wgd_mode(mode::Symbol) = (mode in WGD_MODES || throw(ArgumentError(
+    "WGD mode must be one of $WGD_MODES, got :$mode")); nothing)
+
 """
     SegmentalCNA(chrom, haplotype, start, stop, delta, scale)
 
@@ -77,8 +80,7 @@ struct WholeGenomeDoubling <: CNAEvent
     mode::Symbol
 
     function WholeGenomeDoubling(mode::Symbol = :multiply)
-        mode in WGD_MODES ||
-            throw(ArgumentError("WGD mode must be one of $WGD_MODES, got :$mode"))
+        _check_wgd_mode(mode)
         new(mode)
     end
 end
@@ -123,13 +125,15 @@ function apply!(p::CNProfile, e::SegmentalCNA)
     segs = p.segments[slot(a, e.chrom, e.haplotype)]
     _split_at!(segs, e.start)
     _split_at!(segs, e.stop + 1)
-    for i in eachindex(segs)
-        sg = segs[i]
-        if sg.start >= e.start && sg.stop <= e.stop
-            segs[i] = Segment(sg.start, sg.stop, _shift_cn(sg.cn, e.delta))
-        end
+    lo = segment_index(segs, e.start)          # after the splits, the event's first segment
+    hi = lo
+    while hi <= length(segs) && segs[hi].stop <= e.stop
+        sg = segs[hi]
+        segs[hi] = Segment(sg.start, sg.stop, _shift_cn(sg.cn, e.delta))
+        hi += 1
     end
-    canonicalize!(segs)
+    # Only the shifted run and its two neighbours can have become mergeable.
+    _canonicalize_range!(segs, lo - 1, hi)
     return p
 end
 
@@ -140,7 +144,9 @@ function apply!(p::CNProfile, e::WholeGenomeDoubling)
             newcn = e.mode === :multiply ? 2 * sg.cn : _shift_cn(sg.cn, 1)
             segs[i] = Segment(sg.start, sg.stop, newcn)
         end
-        canonicalize!(segs)
+        # No canonicalize!: both maps are injective (2a = 2b and a+1 = b+1 need a = b,
+        # and 0 stays 0 while everything else moves off it), so distinct neighbours
+        # stay distinct.
     end
     return p
 end

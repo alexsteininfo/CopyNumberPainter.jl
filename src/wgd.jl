@@ -25,8 +25,8 @@ without changing the model's shape.
 struct NoWGD <: WGDPolicy end
 
 """
-    ScheduledWGD(at; mode = :multiply)
-    ScheduledWGD(pairs...; mode = :multiply)
+    ScheduledWGD(at; mode = :multiply, by = :id, allow_missing = false)
+    ScheduledWGD(pairs...; mode = :multiply, by = :id, allow_missing = false)
 
 Place doublings on exactly the edges you name: `at` maps a node id to the number of
 doublings on the edge into it.
@@ -41,26 +41,36 @@ ScheduledWGD(mrca(tree, metastatic_leaves) => 1)    # a subclonal doubling
 ScheduledWGD(node_by_label(tree, "cellA") => 2)     # two successive doublings
 ```
 
+`by = :source_id` keys the schedule by upstream cell id instead of dense node id. Dense ids are renumbered by leaf sampling but source ids are not, so the same schedule then names the same edges on a full tree and on any sample of it — the form to use with `rng_mode = :per_node`. With `allow_missing = true`, ids absent from the tree are skipped: an edge that sampling pruned simply carries no observable doubling, exactly as if the full tree had been simulated and then subset. Name an `mrca` by source id with `node(full, mrca(full, leaves)).source_id`.
+
 The root cannot be scheduled: it has no incoming edge. Use
-`initial = TruncalCNAs(...)` or `initial = Given(...)` to set the root state instead.
+`initial = TruncalCNAs(n; wgd = 1)` for a truncal doubling, or `initial = Given(profile)`,
+to set the root state instead.
 """
 struct ScheduledWGD <: WGDPolicy
     at::Dict{Int,Int}
     mode::Symbol
+    by::Symbol
+    allow_missing::Bool
 
-    function ScheduledWGD(at::AbstractDict; mode::Symbol = :multiply)
-        mode in WGD_MODES || throw(ArgumentError("WGD mode must be one of $WGD_MODES, got :$mode"))
+    function ScheduledWGD(at::AbstractDict; mode::Symbol = :multiply, by::Symbol = :id,
+                          allow_missing::Bool = false)
+        _check_wgd_mode(mode)
+        by in (:id, :source_id) || throw(ArgumentError("by must be :id or :source_id, got :$by"))
+        allow_missing && by !== :source_id && throw(ArgumentError(
+            "allow_missing applies only to by = :source_id: a dense id is never missing, only wrong"))
         d = Dict{Int,Int}()
         for (k, v) in at
             v >= 1 || throw(ArgumentError("scheduled doubling count for node $k must be ≥ 1, got $v"))
             d[Int(k)] = Int(v)
         end
-        new(d, mode)
+        new(d, mode, by, allow_missing)
     end
 end
 
-ScheduledWGD(pairs::Pair...; mode::Symbol = :multiply) =
-    ScheduledWGD(Dict(pairs...); mode = mode)
+ScheduledWGD(pairs::Pair...; mode::Symbol = :multiply, by::Symbol = :id,
+             allow_missing::Bool = false) =
+    ScheduledWGD(Dict(pairs...); mode = mode, by = by, allow_missing = allow_missing)
 
 """
     ExactlyNWGD(n; mode = :multiply)
@@ -75,7 +85,7 @@ struct ExactlyNWGD <: WGDPolicy
 
     function ExactlyNWGD(n::Integer; mode::Symbol = :multiply)
         n >= 1 || throw(ArgumentError("ExactlyNWGD needs n ≥ 1, got $n; use NoWGD() for none"))
-        mode in WGD_MODES || throw(ArgumentError("WGD mode must be one of $WGD_MODES, got :$mode"))
+        _check_wgd_mode(mode)
         new(Int(n), mode)
     end
 end
@@ -95,7 +105,7 @@ struct RateWGD{R<:CNARate} <: WGDPolicy
     mode::Symbol
 
     function RateWGD(rate::R; mode::Symbol = :multiply) where {R<:CNARate}
-        mode in WGD_MODES || throw(ArgumentError("WGD mode must be one of $WGD_MODES, got :$mode"))
+        _check_wgd_mode(mode)
         new{R}(rate, mode)
     end
 end
@@ -121,14 +131,26 @@ node. Called once, before traversal.
 prepare_wgd(::NoWGD, ::PhyloTree, ::Random.AbstractRNG) = Dict{Int,Int}()
 
 function prepare_wgd(p::ScheduledWGD, t::PhyloTree, ::Random.AbstractRNG)
+    out = Dict{Int,Int}()
     for k in sort!(collect(keys(p.at)))
-        1 <= k <= nnodes(t) || throw(ArgumentError(
-            "scheduled WGD names node $k, which is not in this tree (1:$(nnodes(t)))"))
-        isroot(t, k) && throw(ArgumentError(
-            "node $k is the root and has no incoming edge; set the root's copy-number state " *
-            "with initial = TruncalCNAs(n) or initial = Given(profile) instead"))
+        if p.by === :source_id
+            i = get(t.source_index, k, nothing)
+            if i === nothing
+                p.allow_missing && continue
+                throw(ArgumentError("scheduled WGD names source_id $k, which no node of this tree " *
+                                    "carries; pass allow_missing = true if the edge may be absent"))
+            end
+        else
+            1 <= k <= nnodes(t) || throw(ArgumentError(
+                "scheduled WGD names node $k, which is not in this tree (1:$(nnodes(t)))"))
+            i = k
+        end
+        isroot(t, i) && throw(ArgumentError(
+            "node $i is the root and has no incoming edge; for a truncal doubling use " *
+            "initial = TruncalCNAs(n; wgd = 1), or set the root state with initial = Given(profile)"))
+        out[i] = p.at[k]
     end
-    return copy(p.at)
+    return out
 end
 
 function prepare_wgd(p::ExactlyNWGD, t::PhyloTree, rng::Random.AbstractRNG)

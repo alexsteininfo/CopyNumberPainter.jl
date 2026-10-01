@@ -13,7 +13,7 @@ using CopyNumberEvolution
 # Two lineages from one root, deliberately decoupling divisions from elapsed time:
 #   node 2 ("fast"): 10 divisions in 1 unit of real time  — a rapidly cycling clone.
 #   node 3 ("slow"):  1 division  in 10 units of real time — a dormant clone.
-# A newick file or a MutationLoadDynamics.jl tree would carry both quantities the same
+# A newick file or a NonMarkovEvolution.jl tree would carry both quantities the same
 # way; here they are set explicitly to make the contrast obvious.
 tree = phylotree([nothing, 1, 1];
                   birthtimes     = [0.0, 1.0, 10.0],

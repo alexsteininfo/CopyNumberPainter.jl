@@ -24,8 +24,8 @@ abstract type CNARate end
 
 `Poisson(λ · edge_divisions)` alterations on each edge. **The default rate rule.**
 
-Requires `edge_divisions`, i.e. a tree converted from `MutationLoadDynamics.jl` or
-read with `branchlength = :divisions` or `:time`. On a simulated lineage tree every
+Requires `edge_divisions`, i.e. a tree converted from `NonMarkovEvolution.jl` or
+read with `branchlength = :divisions`. On a simulated lineage tree every
 edge is exactly one division, so this reduces to `Poisson(λ)` — but a newick edge can
 represent many divisions, which is why the rate multiplies rather than being applied
 per edge.
@@ -42,7 +42,7 @@ end
     PerTime(μ)
 
 `Poisson(μ · Δt)` alterations on each edge, where `Δt` is the edge's elapsed real
-time. Requires birthtimes, i.e. a tree from `MutationLoadDynamics.jl` or read with
+time. Requires birthtimes, i.e. a tree from `NonMarkovEvolution.jl` or read with
 `branchlength = :time`.
 """
 struct PerTime <: CNARate
@@ -63,7 +63,7 @@ one CNA, with no extra randomness. With `p < 1` each mutation independently beco
 CNA, giving `Binomial(edge_mutations, p)` — which keeps an upstream
 fitness-coupled mutation process intact while lowering the realised CNA rate.
 
-Requires `edge_mutations`, i.e. a tree from `MutationLoadDynamics.jl` or read with
+Requires `edge_mutations`, i.e. a tree from `NonMarkovEvolution.jl` or read with
 `branchlength = :mutations`.
 """
 struct FromEdgeMutations <: CNARate
@@ -96,7 +96,7 @@ function n_cnas(r::PerDivision, t::PhyloTree, i::Integer, rng::Random.AbstractRN
     d = node(t, i).edge_divisions
     d === nothing && throw(ArgumentError(
         "PerDivision needs edge_divisions, which is missing on node $i. " *
-        "Convert a MutationLoadDynamics tree, or read the newick file with branchlength = :divisions or :time."))
+        "Convert a NonMarkovEvolution tree, or read the newick file with branchlength = :divisions."))
     λ = r.λ * d
     λ == 0 && return 0
     return rand(rng, Poisson(λ))
@@ -115,10 +115,15 @@ function n_cnas(r::FromEdgeMutations, t::PhyloTree, i::Integer, rng::Random.Abst
     m = node(t, i).edge_mutations
     m === nothing && throw(ArgumentError(
         "FromEdgeMutations needs edge_mutations, which is missing on node $i. " *
-        "Convert a MutationLoadDynamics tree, or read the newick file with branchlength = :mutations."))
+        "Convert a NonMarkovEvolution tree, or read the newick file with branchlength = :mutations."))
     m == 0 && return 0
     r.p == 1.0 && return m
     return rand(rng, Binomial(m, r.p))
 end
 
-n_cnas(r::CustomRate, t::PhyloTree, i::Integer, rng::Random.AbstractRNG) = r.f(t, i, rng)
+function n_cnas(r::CustomRate, t::PhyloTree, i::Integer, rng::Random.AbstractRNG)
+    k = r.f(t, i, rng)
+    (k isa Integer && k >= 0) || throw(ArgumentError(
+        "CustomRate function returned $(repr(k)) for node $i; it must return a non-negative integer"))
+    return Int(k)
+end

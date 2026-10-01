@@ -75,10 +75,7 @@ end
 
 Base.copy(p::CNProfile) = CNProfile(p.assembly, [copy(v) for v in p.segments])
 
-# Equality compares the full genome (via `same_assembly`), not just the assembly's
-# name and sex. Every test fixture is named "toy" with sex :female, so a name-and-sex
-# comparison could not distinguish, say, a 2-chromosome toy assembly from a
-# 3-chromosome one — and later tasks depend on that distinction.
+# Equality compares the full genome (via same_assembly), not just the assembly's name and sex: two structurally different assemblies can share both, and profiles on them must not compare equal.
 Base.:(==)(x::CNProfile, y::CNProfile) =
     same_assembly(x.assembly, y.assembly) && x.segments == y.segments
 
@@ -117,15 +114,24 @@ form required by [`check_invariants`](@ref) after an edit that may have left two
 neighbours sharing a copy number.
 """
 function canonicalize!(segs::Vector{Segment})
-    i = 1
-    while i < length(segs)
-        if segs[i].cn == segs[i + 1].cn
-            segs[i] = Segment(segs[i].start, segs[i + 1].stop, segs[i].cn)
-            deleteat!(segs, i + 1)
+    return _canonicalize_range!(segs, 1, length(segs))
+end
+
+# Merge equal-copy-number neighbours among segs[lo:hi] (clamped) in one pass, using a
+# write cursor instead of a deleteat! per merge.
+function _canonicalize_range!(segs::Vector{Segment}, lo::Int, hi::Int)
+    lo, hi = max(lo, 1), min(hi, length(segs))
+    lo >= hi && return segs
+    w = lo
+    for r in (lo + 1):hi
+        if segs[r].cn == segs[w].cn
+            segs[w] = Segment(segs[w].start, segs[r].stop, segs[w].cn)
         else
-            i += 1
+            w += 1
+            segs[w] = segs[r]
         end
     end
+    w < hi && deleteat!(segs, (w + 1):hi)
     return segs
 end
 

@@ -84,6 +84,20 @@
         @test_throws ArgumentError draw_target(CNWeighted(1.0), p, Random.Xoshiro(1))
     end
 
+    @testset "CNWeighted weights by material: length × mean_cn^β" begin
+        specs = [CopyNumberEvolution.ChromosomeSpec("chr1", 3000, 1201:1800),
+                 CopyNumberEvolution.ChromosomeSpec("chr2", 1000, 401:600)]
+        a = CopyNumberEvolution.GenomeAssembly("w", :female, specs, [2, 2])
+        p = diploid(a)
+        rng = Random.Xoshiro(23)
+        frac(rule) = count(_ -> first(draw_target(rule, p, rng)) == 1, 1:40_000) / 40_000
+        @test frac(CNWeighted()) ≈ 0.75 rtol = 0.03                       # the default
+        @test frac(CNWeighted(1.0; length_weighted = false)) ≈ 0.5 rtol = 0.04
+        @test CNWeighted().β == 1.0 && CNWeighted().length_weighted
+        @test_throws ArgumentError CNWeighted(NaN)
+        @test_throws ArgumentError CNWeighted(Inf)
+    end
+
     @testset "ExtentMixture validation" begin
         @test_throws ArgumentError ExtentMixture(p_chromosome = 0.6, p_arm = 0.6)
         @test_throws ArgumentError ExtentMixture(p_chromosome = -0.1)
@@ -132,6 +146,28 @@
         @test truncated > 0     # truncation at the boundary does happen, per MEDICC2
     end
 
+    @testset "focal coverage is symmetric along the chromosome" begin
+        L = 10_000
+        a = CopyNumberEvolution.GenomeAssembly("sym", :female,
+                [CopyNumberEvolution.ChromosomeSpec("chr1", L, 4001:6000)], [2])
+        p = diploid(a)
+        d = ExtentMixture(lengthdist = Distributions.Uniform(1000.0, 3000.0))
+        rng = Random.Xoshiro(22)
+        covers = zeros(Int, 3)                        # positions 1, L ÷ 2, L
+        for _ in 1:40_000
+            s, e, _ = draw_extent(d, p, 1, 1, rng)
+            @test 1 <= s <= e <= L
+            for (k, x) in enumerate((1, L ÷ 2, L))
+                s <= x <= e && (covers[k] += 1)
+            end
+        end
+        # about 6,700 hits each; 5 sd of a difference of two such counts is ~600
+        tol = 5 * sqrt(2 * covers[2])
+        @test abs(covers[1] - covers[3]) < tol
+        @test abs(covers[1] - covers[2]) < tol
+        @test abs(covers[3] - covers[2]) < tol
+    end
+
     @testset "the three extent classes appear at their stated rates" begin
         a = toy_assembly(nchrom = 1, len = 1000)
         p = diploid(a)
@@ -167,5 +203,17 @@
         @test draw_target((prof, r) -> (2, 1), p, rng) == (2, 1)
         @test draw_extent((prof, c, h, r) -> (5, 15, :focal), p, 1, 1, rng) == (5, 15, :focal)
         @test draw_kind((prof, c, h, s, e, r) -> -2, p, 1, 1, 5, 15, rng) == -2
+    end
+
+    @testset "weighted sampling never picks a zero weight, even at u = 0" begin
+        @test CopyNumberEvolution._sample_weighted(ZeroRNG(), [0.0, 1.0]) == 2
+        @test CopyNumberEvolution._sample_weighted(ZeroRNG(), [0.0, 0.0, 2.0, 0.0]) == 3
+    end
+
+    @testset "CNWeighted at u = 0 skips a leading deleted slot" begin
+        a = toy_assembly(nchrom = 1, len = 100)
+        p = diploid(a)
+        apply!(p, SegmentalCNA(1, 1, 1, 100, -1, :chromosome))
+        @test draw_target(CNWeighted(1.0), p, ZeroRNG()) == (1, 2)
     end
 end

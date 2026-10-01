@@ -22,7 +22,7 @@ entangled with alteration simulation. Not implemented yet.
 different package. Keeping them apart is what lets the estimators run on real patient
 data with no simulator in their dependency chain.
 
-**Leaf sampling.** `MutationLoadDynamics.jl`'s operation. See
+**Leaf sampling.** `NonMarkovEvolution.jl`'s operation. See
 [Input: trees](trees.md).
 
 **Selection on copy number.** The tree is an input that already encodes whatever
@@ -42,8 +42,10 @@ either introduces a small systematic difference from a real caller's own binning
 
 ### The copy-number ceiling
 
-MEDICC2 cannot represent copy numbers above 8. This package imposes no internal cap and
-warns only on export ([`max_cn`](@ref) tells you where you stand). Whether a cap
+MEDICC2 cannot represent a copy number above 8 on either allele (`cn_a`, `cn_b`); the
+total may exceed 8. This package imposes no internal cap and
+warns only on export ([`max_cn`](@ref) gives the largest total; the per-allele maximum is
+`maximum(maximum, mat.allele)`). Whether a cap
 belongs in the simulation itself — and if so, what should happen to a gain that would
 breach it — is unsettled.
 

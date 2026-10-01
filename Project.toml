@@ -1,28 +1,42 @@
 name = "CopyNumberEvolution"
 uuid = "a7fad464-da36-487c-8111-789b46084000"
 authors = ["Alexander Stein <alexander.stein@vib.be>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [weakdeps]
-MutationLoadDynamics = "7b855ee6-6887-412f-a571-26d20a5a92d7"
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+NonMarkovEvolution = "7b855ee6-6887-412f-a571-26d20a5a92d7"
 
 [extensions]
-CopyNumberEvolutionMutationLoadDynamicsExt = "MutationLoadDynamics"
+CopyNumberEvolutionAbstractTreesExt = "AbstractTrees"
+CopyNumberEvolutionNonMarkovEvolutionExt = "NonMarkovEvolution"
 
 [compat]
+AbstractTrees = "0.4"
+Aqua = "0.8"
+CodecZlib = "0.7"
 Distributions = "0.25"
+NonMarkovEvolution = "0.4"
+REPL = "1"
+Random = "1"
 StatsBase = "0.33, 0.34"
+TOML = "1"
+Test = "1"
 julia = "1.10"
 
 [extras]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Distributions", "REPL", "Test"]
+test = ["AbstractTrees", "Aqua", "Distributions", "REPL", "Test"]

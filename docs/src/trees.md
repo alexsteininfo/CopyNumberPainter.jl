@@ -27,7 +27,7 @@ preorder(t); postorder(t); ancestors(t, 4); descendant_leaves(t, 2)
 
 Arity is arbitrary and unary nodes are allowed, because newick input and inferred trees
 are not guaranteed binary and a pruned lineage tree contains unary nodes. Every
-traversal is iterative, so a 10⁵-deep caterpillar tree is safe.
+traversal, parsing, and writing is iterative, so a 10⁵-deep caterpillar tree is safe.
 
 ### Naming an edge
 
@@ -57,13 +57,15 @@ it is. There is deliberately no default.
 |:---|:---|:---|
 | `:divisions` | `edge_divisions` | [`PerDivision`](@ref) |
 | `:mutations` | `edge_mutations` | [`FromEdgeMutations`](@ref) |
-| `:time` | `birthtime` by cumulative sum, plus `edge_divisions = 1` | [`PerTime`](@ref), and [`PerDivision`](@ref) treating each edge as one division |
+| `:time` | `birthtime` by cumulative sum | [`PerTime`](@ref) |
 
 ```julia
 t = read_newick("lineage.nwk"; branchlength = :divisions)
 write_newick("out.nwk", t; branchlength = :divisions)     # explicit on write too
 newick_string(t; branchlength = :time, labels = :source_id)
 ```
+
+A time tree carries no division count: an edge's elapsed time — the interdivision time on a lineage tree — is [`edge_time`](@ref), and `PerDivision` throws on it rather than assuming one division per edge.
 
 The three [`PhyloNode`](@ref) edge fields are held separately and are honestly
 `nothing` when unknown, rather than defaulting to a sentinel. Each rate rule requires
@@ -77,19 +79,20 @@ labels, `[...]` comments, and missing branch lengths. Under `:divisions` and
 `:mutations` a fractional branch length is rounded with a warning, since a fractional
 count usually means the file should have been read as `:time`.
 
-## The `MutationLoadDynamics.jl` bridge
+## The `NonMarkovEvolution.jl` bridge
 
 Load both packages and a converter appears:
 
 ```julia
-using CopyNumberEvolution, MutationLoadDynamics
+using CopyNumberEvolution, NonMarkovEvolution
 
 tree = PhyloTree(root)               # root::BinaryNode{NonMarkovCell}
+tree = PhyloTree(sample_leaves(root, 100; seed = 1))   # a leaf sample
 founder_mutations(root)              # the founder's own mutations
 ```
 
 Mapping: `birthtime` from the cell; `edge_divisions = 1`, because one lineage-tree edge
-is exactly one division; `edge_mutations = cell.mutations`; `source_id = cell.id`. All
+is exactly one division; `edge_mutations = cell.drivers`; `source_id = cell.id`. All
 three rate rules therefore work on a converted tree.
 
 This is a **package extension**. Loading `CopyNumberEvolution` alone gives the
@@ -104,7 +107,7 @@ the root's `edge_mutations` is `nothing`. If you want them translated, feed
 
 ## Sampling happens upstream
 
-Leaf sampling is `MutationLoadDynamics.jl`'s operation, not this package's. The
+Leaf sampling is `NonMarkovEvolution.jl`'s operation, not this package's. The
 converter takes whatever tree it is handed, full or sampled.
 
 The property that matters is that the upstream sampler **prunes but never collapses**.
@@ -120,4 +123,15 @@ Two consequences. The root of a sampled tree is the original **founder**, not th
 recent common ancestor of the sample — which is why truncal state is expressed as the
 root's [`InitialState`](@ref) rather than as an MRCA special case. And with
 `rng_mode = :per_node` the commuting property holds *exactly*, not just
-distributionally; see [The alteration model](model.md).
+distributionally, under the conditions listed in [Output](output.md).
+
+## Generic tree tooling
+
+[`PhyloTree`](@ref) works with the `AbstractTrees.jl` ecosystem through [`NodeRef`](@ref):
+
+```julia
+using AbstractTrees
+
+t = phylotree([nothing, 1, 1, 2, 2])
+print_tree(NodeRef(t))
+```

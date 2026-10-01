@@ -132,4 +132,27 @@
             @test slot_segments(p, c, h) == [S(1, 50, 2)]
         end
     end
+
+    @testset "apply! agrees with a naive per-base model" begin
+        rng = Random.Xoshiro(40)
+        a = toy_assembly(nchrom = 1, len = 300)
+        for _ in 1:200
+            p = diploid(a)
+            naive = ones(Int, 300)
+            for _ in 1:12
+                s = rand(rng, 1:300); e = min(300, s + rand(rng, 0:120)); d = rand(rng, (-2, -1, 1, 2))
+                apply!(p, SegmentalCNA(1, 1, s, e, d, :focal))
+                for x in s:e
+                    naive[x] = naive[x] == 0 ? 0 : max(0, naive[x] + d)
+                end
+                if rand(rng) < 0.1
+                    mode = rand(rng, (:multiply, :increment))
+                    apply!(p, WholeGenomeDoubling(mode))
+                    naive .= mode === :multiply ? 2 .* naive : ifelse.(naive .== 0, 0, naive .+ 1)
+                end
+            end
+            @test check_invariants(p)
+            @test [cn_at(slot_segments(p, 1, 1), x) for x in 1:300] == naive
+        end
+    end
 end

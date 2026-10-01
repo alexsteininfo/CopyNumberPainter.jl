@@ -161,4 +161,127 @@
         # so this test would fail if project ever reprojected the summed segmentation
         @test project(total_cn(p, 1), g, 1, LengthWeightedMajority()) == [2]
     end
+
+    @testset "CNMatrix refuses duplicate row names" begin
+        t = phylotree([nothing, 1, 1]; edge_divisions = [nothing, 1, 1],
+                      labels = [nothing, "cell_3", nothing])     # node 3 is also cell_3
+        a = toy_assembly(nchrom = 1, len = 400)
+        res = simulate_cnas(t, a, CNAModel(rate = PerDivision(0.0)); seed = 37)
+        err = try CNMatrix(res, BinGrid(a, 100)); nothing catch e; e end
+        @test err isa ArgumentError && occursin("cell_3", err.msg)
+        @test_throws ArgumentError CNMatrix(res, BinGrid(a, 100); cells = [2, 2])
+    end
+
+    @testset "a mask drops bins above the masked fraction" begin
+        a = toy_assembly(nchrom = 1, len = 1000)
+        g = BinGrid(a, 100; mask = ["chr1" => 151:260])
+        # 101:200 is 50 % masked (kept: not above 0.5); 201:300 is 60 % (dropped)
+        @test [(b.start, b.stop) for b in g.bins] == [(s, s + 99) for s in 1:100:901 if s != 201]
+        @test g.nmasked == 1
+        @test bins_of(g, 1) == 1:9
+        strict = BinGrid(a, 100; mask = ["chr1" => 151:260], max_masked_fraction = 0.0)
+        @test !any(b -> b.start in (101, 201), strict.bins)
+        @test_throws ArgumentError BinGrid(a, 100; max_masked_fraction = 1.5)
+        @test BinGrid(a, 100).nmasked == 0                       # no mask, nothing dropped
+    end
+
+    @testset "overlapping and out-of-range mask intervals are merged and clipped" begin
+        a = toy_assembly(nchrom = 1, len = 1000)
+        g = BinGrid(a, 100; mask = ["chr1" => 250:320, "chr1" => 300:420, "chr1" => 990:5000])
+        @test g.mask == ["chr1" => 250:420, "chr1" => 990:1000]
+    end
+
+    @testset "centromere_mask removes centromeric bins" begin
+        a = toy_assembly(nchrom = 2, len = 1000)                # centromeres 401:600
+        @test centromere_mask(a) == ["chr1" => 401:600, "chr2" => 401:600]
+        g = BinGrid(a, 100; mask = centromere_mask(a))
+        @test nbins(g) == 16
+        @test !any(b -> 401 <= b.start <= 600, g.bins)
+    end
+
+    @testset "read_bed_mask converts BED to 1-based inclusive" begin
+        bed = "# comment\ntrack name=x\nbrowser position chr1\n" *
+              "chr1\t150\t260\tblack\r\nchrM 0 100\n\n"         # CRLF and space-separated
+        m = read_bed_mask(IOBuffer(bed))
+        @test m == ["chr1" => 151:260, "chrM" => 1:100]
+        a = toy_assembly(nchrom = 1, len = 1000)
+        g = @test_logs (:warn, r"not in assembly") BinGrid(a, 100; mask = m)
+        @test g.nmasked == 1
+        @test_throws ArgumentError read_bed_mask(IOBuffer("chr1\t10\n"))
+        @test_throws ArgumentError read_bed_mask(IOBuffer("chr1\t20\t10\n"))
+        @test_throws ArgumentError read_bed_mask(IOBuffer("chr1\tx\t10\n"))
+        path = joinpath(mktempdir(), "m.bed")
+        write(path, "chr1\t0\t10\n")
+        @test read_bed_mask(path) == ["chr1" => 1:10]
+        gz = joinpath(mktempdir(), "m.bed.gz")
+        CopyNumberEvolution._with_io(io -> print(io, "chr1\t0\t10\nchr2\t5\t9\n"), gz)
+        @test read_bed_mask(gz) == ["chr1" => 1:10, "chr2" => 6:9]
+        # only a whole first field of `track` / `browser` marks a header
+        @test read_bed_mask(IOBuffer("trackA\t0\t10\nbrowserB\t0\t5\ntrack\tx\n")) ==
+              ["trackA" => 1:10, "browserB" => 1:5]
+        @test_throws ArgumentError read_bed_mask(IOBuffer("chr1\t10\t10\n"))   # zero-length
+    end
+
+    @testset "masked grids project and export" begin
+        t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
+        a = toy_assembly(nchrom = 2, len = 1000)
+        res = simulate_cnas(t, a, CNAModel(rate = PerDivision(2.0)); seed = 35)
+        g = BinGrid(a, 100; mask = centromere_mask(a))
+        m = CNMatrix(res, g)
+        @test size(m.total) == (1, 16)
+        buf = IOBuffer()
+        write_medicc2(buf, m)
+        @test count(==('\n'), String(take!(buf))) == 1 + 2 * 16   # header, normal, one cell
+        @test occursin("masked", sprint(show, g))
+    end
+
+    @testset "major_minor sorts alleles per bin and preserves totals" begin
+        a = toy_assembly(nchrom = 1, len = 400)
+        start = diploid(a)
+        apply!(start, SegmentalCNA(1, 1, 1, 200, 2, :focal))       # hap1 1:200 -> 3
+        apply!(start, SegmentalCNA(1, 2, 201, 400, 1, :focal))     # hap2 201:400 -> 2
+        t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
+        res = simulate_cnas(t, a, CNAModel(rate = PerDivision(0.0), initial = Given(start)); seed = 36)
+        m = CNMatrix(res, BinGrid(a, 100))
+        @test m.phasing === :haplotype
+        @test m.allele[1] == [3 3 1 1] && m.allele[2] == [1 1 2 2]
+        u = major_minor(m)
+        @test u.phasing === :major_minor
+        @test u.allele[1] == [3 3 2 2] && u.allele[2] == [1 1 1 1]
+        @test u.total == m.total
+        @test major_minor(u).allele == u.allele                     # idempotent
+        @test m.allele[1] == [3 3 1 1]                              # input untouched
+        @test occursin("major/minor", sprint(show, u))
+        @test_throws ArgumentError major_minor(CNMatrix(res, BinGrid(a, 100); allele = false))
+    end
+
+    @testset "the sweep projection equals per-bin search" begin
+        rng = Random.Xoshiro(38)
+        a = toy_assembly(nchrom = 1, len = 5000)
+        for _ in 1:50
+            p = diploid(a)
+            for _ in 1:15
+                s = rand(rng, 1:5000); e = min(5000, s + rand(rng, 0:800))
+                apply!(p, SegmentalCNA(1, 1, s, e, rand(rng, (-1, 1, 2)), :focal))
+            end
+            segs = slot_segments(p, 1, 1)
+            for size in (97, 250, 1000), rule in (LengthWeightedMajority(), AreaWeightedMean())
+                g = BinGrid(a, size; mask = ["chr1" => 1200:1900])
+                slow = [CopyNumberEvolution._bin_value(segs, CopyNumberEvolution.segment_index(segs, b.start), b, rule)
+                        for b in g.bins]
+                @test project(segs, g, 1, rule) == slow
+            end
+        end
+    end
+
+    @testset "CNMatrix works on a lean run" begin
+        t = phylotree([nothing, 1, 1, 2, 2]; edge_divisions = [nothing, 1, 1, 1, 1])
+        a = toy_assembly(nchrom = 2, len = 1000)
+        m = CNAModel(rate = PerDivision(2.0))
+        full = simulate_cnas(t, a, m; seed = 39)
+        lean = simulate_cnas(t, a, m; seed = 39, retain_internal = false)
+        g = BinGrid(a, 100)
+        ids = collect(1:nnodes(t))
+        @test CNMatrix(lean, g; cells = ids).allele == CNMatrix(full, g; cells = ids).allele
+    end
 end

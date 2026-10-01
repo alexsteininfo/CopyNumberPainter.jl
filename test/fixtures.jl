@@ -1,4 +1,4 @@
-# Shared synthetic fixtures. No real data, ever (see the plan's global constraints).
+# Shared synthetic fixtures. No real data, ever: see the data rule in README.md.
 
 """
     toy_assembly(; nchrom = 2, len = 1000, sex = :female)
@@ -41,12 +41,11 @@ end
 """
     induced_subtree(tree, keep_leaves) -> PhyloTree
 
-Test-only stand-in for `MutationLoadDynamics.sample_leaves`: keep `keep_leaves` plus
+Test-only stand-in for `NonMarkovEvolution.sample_leaves`: keep `keep_leaves` plus
 every ancestor of a kept leaf, **retaining unary nodes and keeping the founder as the
 root**.
 
-This is a fixture, not package API — leaf sampling belongs upstream. It exists so the
-"sampling commutes" property can be tested before that sampler is implemented. The
+This is a fixture, not package API — leaf sampling belongs upstream. It keeps the "sampling commutes" tests independent of `NonMarkovEvolution.jl`; `test_ext.jl` repeats them with the real `sample_leaves` when that package is available. The
 "prune but never collapse" behaviour is the load-bearing part: every division
 ancestral to a kept leaf must remain a node, or a kept cell's root-to-leaf path would
 lose alteration-drawing opportunities. `source_id`s are preserved, which is what makes
@@ -95,4 +94,97 @@ function binary_lineage(depth::Int; divisions::Int = 1, dt::Float64 = 1.0)
         edge_divisions = vcat(nothing, fill(divisions, n - 1)),
         edge_mutations = vcat(nothing, fill(2 * divisions, n - 1)),
         source_ids = collect(1:n))
+end
+
+"""
+    ZeroRNG()
+
+An RNG whose `rand()` is always exactly `0.0`, the one value a `u <= acc` weighted
+sampler gets wrong.
+"""
+struct ZeroRNG <: Random.AbstractRNG end
+Random.rand(::ZeroRNG, ::Random.SamplerTrivial{Random.CloseOpen01{Float64}}) = 0.0
+
+"""
+    DoubledChr1()
+
+A user-defined `InitialState`: chromosome 1, haplotype 1 at copy number 2. It exists to
+test that `initial_profile` is the whole extension interface.
+"""
+struct DoubledChr1 <: CopyNumberEvolution.InitialState end
+function CopyNumberEvolution.initial_profile(::DoubledChr1, a::CopyNumberEvolution.GenomeAssembly)
+    p = diploid(a)
+    apply!(p, SegmentalCNA(1, 1, 1, chromlength(a, 1), 1, :chromosome))
+    return p
+end
+
+"""
+    CyclicUserStruct()
+
+A mutable user struct that can hold a reference to itself, used to test that
+`_describe` handles cycles without stack overflow.
+"""
+mutable struct CyclicUserStruct
+    self
+end
+
+"""
+    TypeFieldStruct()
+
+A user struct with a field holding a type (e.g. `Int`), used to test that
+`_describe` handles type-valued fields without recursing into their structure.
+"""
+struct TypeFieldStruct
+    type_field::Type
+    value::Int
+end
+
+"""
+    MatrixFieldStruct()
+
+A user struct with a matrix field, used to test that `_describe` uses summary
+for non-vector arrays instead of dumping all elements.
+"""
+struct MatrixFieldStruct
+    mat::Matrix{Int}
+end
+
+"""
+    LongVectorFieldStruct()
+
+A user struct with a long vector field, used to test that `_describe` uses summary
+for vectors with >1000 elements instead of dumping all elements.
+"""
+struct LongVectorFieldStruct
+    vec::Vector{Int}
+end
+
+"""
+    TupleFieldStruct()
+
+A user struct with a Tuple field, used to test that `_describe` converts Tuples
+to described vectors.
+"""
+struct TupleFieldStruct
+    tup::Tuple
+end
+
+"""
+    SetFieldStruct()
+
+A user struct with a Set field, used to test that `_describe` converts Sets
+to sorted described vectors when sortable.
+"""
+struct SetFieldStruct
+    s::Set{Int}
+end
+
+"""
+    SelfContainingVectorStruct()
+
+A mutable user struct containing a vector that references the struct itself,
+used to test that `_describe` handles cycles in container types.
+"""
+mutable struct SelfContainingVectorStruct
+    vec::Vector{Any}
 end

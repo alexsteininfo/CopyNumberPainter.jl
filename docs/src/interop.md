@@ -24,12 +24,13 @@ write_medicc2("cells.tsv", mat; normal_name = "normal")
   the conversion happens at this boundary and nowhere else.
 - **Identical segmentation across every sample**, which MEDICC2 requires and which
   holds by construction, since every cell is projected onto the same grid.
-- **A reference sample** named by `normal_name` (default `"diploid"`) with
-  `cn_a = cn_b = 1` in every bin — the root MEDICC2 measures distances from.
+- **A reference sample** named by `normal_name` (default `"diploid"`) holding the
+  assembly's starting karyotype (`1/1` on a diploid chromosome, `1/0` on a hemizygous one)
+  — the root MEDICC2 measures distances from.
 - **Autosomes only** by default, matching MEDICC2's own bulk analyses. With
   `include_xy = true`, a hemizygous chromosome exports as `cn_b = 0`.
 
-It warns if any copy number exceeds 8, which MEDICC2's alphabet cannot represent.
+It warns if any allele copy number (`cn_a` or `cn_b`) exceeds 8, which MEDICC2's alphabet cannot represent.
 
 `sample_id` values come from [`cellname`](@ref), the same function
 [`write_newick`](@ref) uses, so the matrix and an exported tree always agree on
@@ -86,12 +87,19 @@ Two settings make simulated data directly comparable on MEDICC2's own terms:
 # MEDICC2 defines a doubling as +1 on every non-zero segment, not ×2
 wgd = ScheduledWGD(i => 1; mode = :increment)
 
-# and its alphabet caps at 8, so keep copy numbers in range
-max_cn(mat) <= 8 || @warn "profiles exceed what MEDICC2 can represent"
+# and its alphabet caps at 8 per allele, so keep each allele in range
+maximum(maximum, mat.allele) <= 8 || @warn "profiles exceed what MEDICC2 can represent"
 ```
 
-Simulated profiles are also **phased by construction**, which makes them a clean test
-set for MEDICC2's evolutionary phasing: the truth is known.
+## Phased and unphased input
+
+Simulated profiles are phased by construction — track 1 is haplotype 1, and track 2 is haplotype 2. This makes them a clean test set for MEDICC2's evolutionary phasing, where the truth is known. To benchmark against unphased input from real allele-specific callers, transform the matrix:
+
+```julia
+write_medicc2("cells_unphased.tsv", major_minor(mat))
+```
+
+[`major_minor`](@ref) sorts each bin's alleles as major (larger) and minor within that bin, independently, so the assignment can switch from bin to bin along a chromosome — which is exactly the information unphased data lacks.
 
 Three things MEDICC2 does not model, and neither does this package: copy-number-neutral
 events, breakage–fusion–bridge cycles, and chromothripsis. MEDICC2's contiguity stress

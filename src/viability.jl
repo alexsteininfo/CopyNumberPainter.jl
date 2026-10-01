@@ -20,7 +20,8 @@ the given tree and silently change the sampled population size.
 Distinct from viability, and never switchable off: copy number 0 is **absorbing**,
 because absent DNA cannot be regained (see [`apply!`](@ref)). Viability is about
 states that are *unobserved*; absorption is about states that are *impossible*.
-A proposal blocked by absorption costs no rejection attempt.
+A proposal that falls entirely on absent DNA would change nothing; it is redrawn,
+tallied as `:no_effect`, and does not count against `max_attempts`.
 
 The whole interface is one method — `violation(rule, profile, event)` returning a
 reason symbol or `nothing` — so a new class of impossible state is a new struct and no
@@ -148,7 +149,7 @@ isviable(r::ViabilityRule, p::CNProfile, e::CNAEvent) = violation(r, p, e) === n
     max_attempts(rule) -> Int
 
 How many times a rejected alteration may be redrawn before the simulation gives up
-and throws.
+and throws. For [`AllRules`](@ref) it is the largest budget of its rules, so a strict rule inside `AllRules` may be retried more often than it would be on its own.
 """
 max_attempts(::AllowAll) = 1
 max_attempts(r::RejectAndRedraw) = r.max_attempts
