@@ -30,8 +30,5 @@ data/
 docs/superpowers/
 .claude/
 
-# The personal to-do list at the repository root — local only (user request).
-/TODO.md
-
-
-literature/
+# Local development material (literature, notes, TODO) — local only, not part of the package.
+.development/

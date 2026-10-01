@@ -97,8 +97,9 @@ julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate(); in
 
 The manual covers the concepts, the input layer, every model component and the
 scientific consequences of its defaults, the output and projection rules, MEDICC2
-interoperability, and the open questions. `literature/MEDICC2.md` holds detailed notes
-on the reference method.
+interoperability, and the open questions. The reference method is MEDICC2: Kaufmann et al.,
+"MEDICC2: whole-genome doubling aware copy-number phylogenies for cancer evolution",
+*Genome Biology* 23, 241 (2022), [doi:10.1186/s13059-022-02794-9](https://doi.org/10.1186/s13059-022-02794-9).
 
 ## Examples
 

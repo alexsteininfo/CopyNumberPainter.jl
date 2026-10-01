@@ -81,5 +81,7 @@ write_events("events.tsv", res)
 - [Limitations and open questions](limitations.md) — what is deliberately out of
   scope, and what is still undecided.
 
-Detailed notes on MEDICC2, the reference method this model is calibrated against, live
-in `literature/MEDICC2.md` in the repository.
+The reference method this model is calibrated against is MEDICC2 (Kaufmann et al.,
+*Genome Biology* 23, 241, 2022,
+[doi:10.1186/s13059-022-02794-9](https://doi.org/10.1186/s13059-022-02794-9)); see
+[MEDICC2 interoperability](interop.md).

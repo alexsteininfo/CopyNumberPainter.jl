@@ -12,8 +12,10 @@ the form real low-coverage single-cell DNA data arrives in.
 This package is an *observation model*. It does not infer trees, estimate parameters,
 or compute distances between profiles.
 
-See the manual for the modelling choices and their consequences, and
-`literature/MEDICC2.md` for the reference method this model is calibrated against.
+See the manual for the modelling choices and their consequences. The reference method
+this model is calibrated against is MEDICC2 (Kaufmann et al., "MEDICC2: whole-genome
+doubling aware copy-number phylogenies for cancer evolution", *Genome Biology* 23, 241,
+2022, doi:10.1186/s13059-022-02794-9).
 """
 module CopyNumberPainter
 

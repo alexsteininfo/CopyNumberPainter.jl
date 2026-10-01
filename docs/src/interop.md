@@ -4,8 +4,12 @@
 2022) is the reference method for inferring phylogenies and ancestral genomes from
 allele-specific copy-number profiles. Its evolutionary model is the closest published
 statement of which copy-number aberrations matter, and it is what this package's event
-taxonomy is calibrated against. Detailed notes live in `literature/MEDICC2.md` in the
-repository.
+taxonomy is calibrated against.
+
+> Kaufmann TL, Petkovic M, Watkins TBK, Colliver EC, Laskina S, Thapa N, Minussi DC,
+> Navin N, Swanton C, Van Loo P, Haase K, Tarabichi M, Schwarz RF. MEDICC2: whole-genome
+> doubling aware copy-number phylogenies for cancer evolution. *Genome Biology* 23, 241
+> (2022). [doi:10.1186/s13059-022-02794-9](https://doi.org/10.1186/s13059-022-02794-9)
 
 ## Exporting
 
