@@ -8,7 +8,7 @@
 #
 # Run with: julia --project examples/02_per_division_vs_per_time.jl
 
-using CopyNumberEvolution
+using CopyNumberPainter
 
 # Two lineages from one root, deliberately decoupling divisions from elapsed time:
 #   node 2 ("fast"): 10 divisions in 1 unit of real time  — a rapidly cycling clone.

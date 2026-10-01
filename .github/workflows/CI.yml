@@ -71,6 +71,6 @@ jobs:
             using Pkg
             Pkg.activate(temp = true)
             Pkg.develop(path = pwd())
-            Pkg.develop(url = "https://github.com/alexander-stein/NonMarkovEvolution.jl")
+            Pkg.develop(url = "https://github.com/alexsteininfo/NonMarkovEvolution.jl")
             Pkg.add(["Test", "Distributions", "Aqua", "AbstractTrees", "REPL"])
             include(joinpath(pwd(), "test", "runtests.jl"))'

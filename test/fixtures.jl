@@ -8,9 +8,9 @@ middle fifth. Chromosome names are `"chr1"`, `"chr2"`, … so sex handling is *n
 triggered; use `toy_sex_assembly` for that.
 """
 function toy_assembly(; nchrom::Int = 2, len::Int = 1000, sex::Symbol = :female)
-    specs = [CopyNumberEvolution.ChromosomeSpec("chr$(i)", len,
+    specs = [CopyNumberPainter.ChromosomeSpec("chr$(i)", len,
                 (2 * len ÷ 5 + 1):(3 * len ÷ 5)) for i in 1:nchrom]
-    CopyNumberEvolution.GenomeAssembly("toy", sex, specs, fill(2, nchrom))
+    CopyNumberPainter.GenomeAssembly("toy", sex, specs, fill(2, nchrom))
 end
 
 """
@@ -21,9 +21,9 @@ exercised. `sex` is `:female` or `:male`.
 """
 function toy_sex_assembly(sex::Symbol; len::Int = 1000)
     names = ["chr1", "chr2", "chrX", "chrY"]
-    specs = [CopyNumberEvolution.ChromosomeSpec(n, len,
+    specs = [CopyNumberPainter.ChromosomeSpec(n, len,
                 (2 * len ÷ 5 + 1):(3 * len ÷ 5)) for n in names]
-    CopyNumberEvolution.GenomeAssembly("toysex", sex, specs)
+    CopyNumberPainter.GenomeAssembly("toysex", sex, specs)
 end
 
 """
@@ -33,9 +33,9 @@ One chromosome present in a single copy. Used for the pathological-rejection tes
 the only whole-chromosome loss available drives total copy number to zero.
 """
 function hemizygous_assembly(; len::Int = 1000)
-    specs = [CopyNumberEvolution.ChromosomeSpec("chr1", len,
+    specs = [CopyNumberPainter.ChromosomeSpec("chr1", len,
                 (2 * len ÷ 5 + 1):(3 * len ÷ 5))]
-    CopyNumberEvolution.GenomeAssembly("hemi", :male, specs, [1])
+    CopyNumberPainter.GenomeAssembly("hemi", :male, specs, [1])
 end
 
 """
@@ -111,8 +111,8 @@ Random.rand(::ZeroRNG, ::Random.SamplerTrivial{Random.CloseOpen01{Float64}}) = 0
 A user-defined `InitialState`: chromosome 1, haplotype 1 at copy number 2. It exists to
 test that `initial_profile` is the whole extension interface.
 """
-struct DoubledChr1 <: CopyNumberEvolution.InitialState end
-function CopyNumberEvolution.initial_profile(::DoubledChr1, a::CopyNumberEvolution.GenomeAssembly)
+struct DoubledChr1 <: CopyNumberPainter.InitialState end
+function CopyNumberPainter.initial_profile(::DoubledChr1, a::CopyNumberPainter.GenomeAssembly)
     p = diploid(a)
     apply!(p, SegmentalCNA(1, 1, 1, chromlength(a, 1), 1, :chromosome))
     return p

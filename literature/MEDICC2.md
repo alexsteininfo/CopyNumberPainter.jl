@@ -13,7 +13,7 @@ context-free-grammar implementation, no WGD.
 **Why it is in this repo.** MEDICC2 is the reference *inference* method for
 allele-specific copy-number phylogenies, and its evolutionary model is the closest
 published statement of "which copy-number aberrations matter". This note is the
-source for the CNA event taxonomy `CopyNumberEvolution.jl` simulates and for the
+source for the CNA event taxonomy `CopyNumberPainter.jl` simulates and for the
 output format that has to be consumable by MEDICC2. See
 [§13 Implications](#13-implications-for-copynumberevolutionjl).
 
@@ -359,7 +359,7 @@ WGDs at one node can break event reconstruction when using total copy numbers.
 
 ---
 
-## 13. Implications for `CopyNumberEvolution.jl`
+## 13. Implications for `CopyNumberPainter.jl`
 
 What this paper settles, or constrains, for our forward simulator.
 

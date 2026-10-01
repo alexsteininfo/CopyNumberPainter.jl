@@ -7,7 +7,7 @@ using TOML
                      wgd = ScheduledWGD(2 => 1; mode = :increment),
                      viability = AllRules([RejectAndRedraw(), AllowAll()]),
                      initial = TruncalCNAs(3; wgd = 1))
-        d = CopyNumberEvolution._describe(m)
+        d = CopyNumberPainter._describe(m)
         buf = IOBuffer()
         TOML.print(buf, Dict("model" => d))                 # must not throw
         back = TOML.parse(String(take!(buf)))["model"]
@@ -26,8 +26,8 @@ using TOML
     @testset "assemblies round-trip through TOML" begin
         for a in (hg38(:male), hg19(:female), toy_sex_assembly(:male), hemizygous_assembly())
             buf = IOBuffer()
-            TOML.print(buf, CopyNumberEvolution._assembly_meta(a))
-            b = CopyNumberEvolution._assembly_from_meta(TOML.parse(String(take!(buf))))
+            TOML.print(buf, CopyNumberPainter._assembly_meta(a))
+            b = CopyNumberPainter._assembly_from_meta(TOML.parse(String(take!(buf))))
             @test same_assembly(a, b)
         end
     end
@@ -35,13 +35,13 @@ using TOML
     @testset "ModelRecord shows its original repr" begin
         r = ModelRecord(Dict{String,Any}("type" => "CNAModel"), "CNAModel(rate=…)")
         @test sprint(show, r) == "CNAModel(rate=…)"
-        @test CopyNumberEvolution._describe(r) == r.description
+        @test CopyNumberPainter._describe(r) == r.description
     end
 
     @testset "_describe handles cyclic user structs without stack overflow" begin
         cyc = CyclicUserStruct(nothing)
         cyc.self = cyc
-        d = CopyNumberEvolution._describe(cyc)
+        d = CopyNumberPainter._describe(cyc)
         buf = IOBuffer()
         # Should not throw StackOverflowError; depth limit prevents infinite recursion
         TOML.print(buf, Dict("cyc" => d))
@@ -51,7 +51,7 @@ using TOML
 
     @testset "_describe handles structs with type-valued fields" begin
         ts = TypeFieldStruct(Int, 42)
-        d = CopyNumberEvolution._describe(ts)
+        d = CopyNumberPainter._describe(ts)
         buf = IOBuffer()
         TOML.print(buf, Dict("ts" => d))
         back = TOML.parse(String(take!(buf)))["ts"]
@@ -61,7 +61,7 @@ using TOML
 
     @testset "_describe handles matrix fields with summary" begin
         mfs = MatrixFieldStruct(rand(Int, 3, 4))
-        d = CopyNumberEvolution._describe(mfs)
+        d = CopyNumberPainter._describe(mfs)
         buf = IOBuffer()
         TOML.print(buf, Dict("mfs" => d))
         back = TOML.parse(String(take!(buf)))["mfs"]
@@ -72,7 +72,7 @@ using TOML
 
     @testset "_describe handles long vector fields with summary" begin
         lvfs = LongVectorFieldStruct(collect(1:2000))
-        d = CopyNumberEvolution._describe(lvfs)
+        d = CopyNumberPainter._describe(lvfs)
         buf = IOBuffer()
         TOML.print(buf, Dict("lvfs" => d))
         back = TOML.parse(String(take!(buf)))["lvfs"]
@@ -83,7 +83,7 @@ using TOML
 
     @testset "_describe handles Tuple fields as vectors" begin
         tfs = TupleFieldStruct((1, "hello", 3.14))
-        d = CopyNumberEvolution._describe(tfs)
+        d = CopyNumberPainter._describe(tfs)
         buf = IOBuffer()
         TOML.print(buf, Dict("tfs" => d))
         back = TOML.parse(String(take!(buf)))["tfs"]
@@ -97,7 +97,7 @@ using TOML
 
     @testset "_describe handles Set fields as sorted vectors" begin
         sfs = SetFieldStruct(Set([3, 1, 2]))
-        d = CopyNumberEvolution._describe(sfs)
+        d = CopyNumberPainter._describe(sfs)
         buf = IOBuffer()
         TOML.print(buf, Dict("sfs" => d))
         back = TOML.parse(String(take!(buf)))["sfs"]
@@ -110,7 +110,7 @@ using TOML
     @testset "_describe handles self-containing vectors without stack overflow" begin
         scvs = SelfContainingVectorStruct(Any[])
         push!(scvs.vec, scvs)
-        d = CopyNumberEvolution._describe(scvs)
+        d = CopyNumberPainter._describe(scvs)
         buf = IOBuffer()
         # Should not throw StackOverflowError; depth limit in container methods prevents it
         TOML.print(buf, Dict("scvs" => d))
@@ -144,7 +144,7 @@ using TOML
             @test replay(back) == allprofiles(res)
             meta = TOML.parsefile(prefix * "_meta.toml")
             @test meta["format_version"] == 1
-            @test meta["package_version"] == string(pkgversion(CopyNumberEvolution))
+            @test meta["package_version"] == string(pkgversion(CopyNumberPainter))
             @test meta["newick_branchlength"] == "divisions"
             @test isfile(prefix * ".nwk")
             save_simulation(prefix * "2", back)             # a loaded result saves again
@@ -180,6 +180,20 @@ using TOML
         save_simulation(prefix, res)
         meta = TOML.parsefile(prefix * "_meta.toml")
         meta["format_version"] = 99
+        open(io -> TOML.print(io, meta), prefix * "_meta.toml", "w")
+        @test_throws ArgumentError load_simulation(prefix)
+    end
+
+    @testset "bundles saved under the old package name still load" begin
+        res = sim()
+        prefix = joinpath(mktempdir(), "run")
+        save_simulation(prefix, res)
+        meta = TOML.parsefile(prefix * "_meta.toml")
+        @test meta["format"] == "CopyNumberPainter.simulation"
+        meta["format"] = "CopyNumberEvolution.simulation"
+        open(io -> TOML.print(io, meta), prefix * "_meta.toml", "w")
+        @test load_simulation(prefix).events == res.events
+        meta["format"] = "SomethingElse.simulation"
         open(io -> TOML.print(io, meta), prefix * "_meta.toml", "w")
         @test_throws ArgumentError load_simulation(prefix)
     end

@@ -106,12 +106,15 @@ function _tryload(read_part, path)
 end
 
 function _check_bundle(meta, format, prefix)
-    get(meta, "format", "") == format || throw(ArgumentError(
+    # Bundles written before the package was renamed carry the old package name in
+    # their format tag; the files themselves are unchanged, so they still load.
+    legacy = replace(format, "CopyNumberPainter" => "CopyNumberEvolution")
+    get(meta, "format", "") in (format, legacy) || throw(ArgumentError(
         "$(prefix)_meta.toml is not a $format bundle"))
     # Int(...): TOML hands back an Int128 for integers that do not fit in an Int64.
     Int(meta["format_version"]) <= _FORMAT_VERSION || throw(ArgumentError(
         "$(prefix)_meta.toml has format version $(meta["format_version"]), newer than the " *
-        "$(_FORMAT_VERSION) this version of CopyNumberEvolution reads; upgrade the package"))
+        "$(_FORMAT_VERSION) this version of CopyNumberPainter reads; upgrade the package"))
     return meta
 end
 
@@ -183,7 +186,7 @@ function save_simulation(prefix::AbstractString, res::CNAEvolution;
     nwkstring === nothing || _with_io(io -> print(io, nwkstring), part("newick", ".nwk"))
 
     meta = merge(_version_meta(), Dict{String,Any}(
-        "format" => "CopyNumberEvolution.simulation",
+        "format" => "CopyNumberPainter.simulation",
         "outputs" => sort!(collect(keys(files))), "files" => files,
         "rng_mode" => String(res.rng_mode), "retain_internal" => res.retain_internal,
         "nnodes" => nnodes(res.tree), "nleaves" => length(leaves(res.tree)),
@@ -206,7 +209,7 @@ gives a warning; every profile not read from it is rebuilt from the event log, s
 the result is always complete. The model comes back as a [`ModelRecord`](@ref).
 """
 function load_simulation(prefix::AbstractString)
-    meta = _check_bundle(TOML.parsefile(prefix * "_meta.toml"), "CopyNumberEvolution.simulation", prefix)
+    meta = _check_bundle(TOML.parsefile(prefix * "_meta.toml"), "CopyNumberPainter.simulation", prefix)
     file(key) = joinpath(dirname(prefix), meta["files"][key])
     a = _assembly_from_meta(meta["assembly"])
     tree = read_tree(file("tree"))
@@ -262,7 +265,7 @@ function save_matrix(prefix::AbstractString, m::CNMatrix; compress::Bool = false
     end
     g = m.grid
     meta = merge(_version_meta(), Dict{String,Any}(
-        "format" => "CopyNumberEvolution.matrix",
+        "format" => "CopyNumberPainter.matrix",
         "outputs" => sort!(collect(keys(files))), "files" => files,
         "assembly" => _assembly_meta(g.assembly),
         "grid" => Dict{String,Any}("size" => g.size, "max_masked_fraction" => g.max_masked_fraction,
@@ -283,7 +286,7 @@ Read the files written by [`save_matrix`](@ref)`(prefix, m)`. The grid is rebuil
 from the metadata and must reproduce `<prefix>_bins.tsv` exactly.
 """
 function load_matrix(prefix::AbstractString)
-    meta = _check_bundle(TOML.parsefile(prefix * "_meta.toml"), "CopyNumberEvolution.matrix", prefix)
+    meta = _check_bundle(TOML.parsefile(prefix * "_meta.toml"), "CopyNumberPainter.matrix", prefix)
     file(key) = joinpath(dirname(prefix), meta["files"][key])
     a = _assembly_from_meta(meta["assembly"])
     gm = meta["grid"]

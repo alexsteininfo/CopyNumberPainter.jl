@@ -1,5 +1,5 @@
 @testset "bingrid" begin
-    S = CopyNumberEvolution.Segment
+    S = CopyNumberPainter.Segment
 
     @testset "grid layout" begin
         a = toy_assembly(nchrom = 2, len = 1000)
@@ -7,8 +7,8 @@
         @test nbins(g) == 8
         @test bins_of(g, 1) == 1:4
         @test bins_of(g, 2) == 5:8
-        @test g.bins[1] == CopyNumberEvolution.Bin(1, 1, 250)
-        @test g.bins[4] == CopyNumberEvolution.Bin(1, 751, 1000)
+        @test g.bins[1] == CopyNumberPainter.Bin(1, 1, 250)
+        @test g.bins[4] == CopyNumberPainter.Bin(1, 751, 1000)
         @test_throws ArgumentError BinGrid(a, 0)
     end
 
@@ -16,7 +16,7 @@
         a = toy_assembly(nchrom = 1, len = 1000)
         g = BinGrid(a, 300)
         @test nbins(g) == 4
-        @test g.bins[4] == CopyNumberEvolution.Bin(1, 901, 1000)
+        @test g.bins[4] == CopyNumberPainter.Bin(1, 901, 1000)
         @test length(bins_of(g, 1)) == 4
     end
 
@@ -214,7 +214,7 @@
         write(path, "chr1\t0\t10\n")
         @test read_bed_mask(path) == ["chr1" => 1:10]
         gz = joinpath(mktempdir(), "m.bed.gz")
-        CopyNumberEvolution._with_io(io -> print(io, "chr1\t0\t10\nchr2\t5\t9\n"), gz)
+        CopyNumberPainter._with_io(io -> print(io, "chr1\t0\t10\nchr2\t5\t9\n"), gz)
         @test read_bed_mask(gz) == ["chr1" => 1:10, "chr2" => 6:9]
         # only a whole first field of `track` / `browser` marks a header
         @test read_bed_mask(IOBuffer("trackA\t0\t10\nbrowserB\t0\t5\ntrack\tx\n")) ==
@@ -267,7 +267,7 @@
             segs = slot_segments(p, 1, 1)
             for size in (97, 250, 1000), rule in (LengthWeightedMajority(), AreaWeightedMean())
                 g = BinGrid(a, size; mask = ["chr1" => 1200:1900])
-                slow = [CopyNumberEvolution._bin_value(segs, CopyNumberEvolution.segment_index(segs, b.start), b, rule)
+                slow = [CopyNumberPainter._bin_value(segs, CopyNumberPainter.segment_index(segs, b.start), b, rule)
                         for b in g.bins]
                 @test project(segs, g, 1, rule) == slow
             end

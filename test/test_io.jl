@@ -179,7 +179,7 @@
             plain, gz = joinpath(dir, "x.tsv"), joinpath(dir, "x.tsv.gz")
             w(plain, x); w(gz, x)
             @test read(gz)[1:2] == [0x1f, 0x8b]                      # gzip magic bytes
-            @test read(CopyNumberEvolution.CodecZlib.GzipDecompressorStream(open(gz)), String) ==
+            @test read(CopyNumberPainter.CodecZlib.GzipDecompressorStream(open(gz)), String) ==
                   read(plain, String)
         end
     end
@@ -211,8 +211,8 @@
     end
 
     @testset "write_medicc2 refuses more than two haplotype tracks" begin
-        spec = [CopyNumberEvolution.ChromosomeSpec("chr1", 400, 161:240)]
-        a = CopyNumberEvolution.GenomeAssembly("tri", :female, spec, [3])
+        spec = [CopyNumberPainter.ChromosomeSpec("chr1", 400, 161:240)]
+        a = CopyNumberPainter.GenomeAssembly("tri", :female, spec, [3])
         t = phylotree([nothing, 1]; edge_divisions = [nothing, 1])
         res = simulate_cnas(t, a, CNAModel(rate = PerDivision(0.0)); seed = 49)
         @test_throws ArgumentError write_medicc2(IOBuffer(), CNMatrix(res, BinGrid(a, 100)))

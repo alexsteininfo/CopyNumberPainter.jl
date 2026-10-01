@@ -6,7 +6,7 @@
 #
 # Run with: julia --project examples/05_newick_and_medicc2.jl
 
-using CopyNumberEvolution
+using CopyNumberPainter
 
 # A newick file carries one number per edge; here it is a division count, so we read
 # it with branchlength = :divisions. Written to a temp file to keep this example

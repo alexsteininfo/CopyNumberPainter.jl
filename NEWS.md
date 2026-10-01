@@ -2,6 +2,11 @@
 
 ## 0.2.0
 
+The package is renamed **CopyNumberEvolution.jl → CopyNumberPainter.jl**: replace
+`using CopyNumberEvolution` with `using CopyNumberPainter`. The UUID is unchanged, so
+existing environments switch by re-adding the package under its new name. Bundles
+written by `save_simulation`/`save_matrix` under the old name still load.
+
 Breaking changes to simulated output: the same seed gives different results than in 0.1.
 
 - Focal events now start uniformly over every position from which they overlap the
@@ -21,7 +26,7 @@ Changed:
 
 - The simulator bridge follows the upstream rename of MutationLoadDynamics.jl to
   NonMarkovEvolution.jl (compat `NonMarkovEvolution = "0.4"`): the package extension is now
-  `CopyNumberEvolutionNonMarkovEvolutionExt`.
+  `CopyNumberPainterNonMarkovEvolutionExt`.
 - Version-stable seeding: SplitMix64 expands a seed into Xoshiro state words, so the same
   seed gives the same streams on every Julia version. Results differ from 0.1.
 - A seed is drawn and recorded when none is given.

@@ -4,6 +4,6 @@
 ```
 
 ```@autodocs
-Modules = [CopyNumberEvolution]
+Modules = [CopyNumberPainter]
 Order = [:module, :type, :function]
 ```

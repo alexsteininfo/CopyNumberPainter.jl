@@ -1,9 +1,10 @@
-# CopyNumberEvolution.jl
+# CopyNumberPainter.jl
 
-Forward simulation of somatic copy-number alterations along a cell-lineage tree.
+Paints somatic copy-number alterations onto cell-lineage trees — ground truth for
+copy-number phylogenetics.
 
 Give it a tree — simulated by
-[`NonMarkovEvolution.jl`](https://github.com/alexander-stein/NonMarkovEvolution.jl)
+[`NonMarkovEvolution.jl`](https://github.com/alexsteininfo/NonMarkovEvolution.jl)
 or read from a newick file — and it draws copy-number alterations along the edges from
 a diploid or given root state, returning the allele-specific profile of **every** node
 together with a **complete log** of the events that produced it. Profiles then project
@@ -17,7 +18,7 @@ or compute distances between profiles.
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/alexander-stein/CopyNumberEvolution.jl")
+Pkg.add(url = "https://github.com/alexsteininfo/CopyNumberPainter.jl")
 ```
 
 Dependencies are deliberately minimal — `Random`, `Distributions`, `StatsBase`, `CodecZlib` and `TOML` — so
@@ -28,7 +29,7 @@ converter appears; leave it out and nothing is missing but the converter.
 ## Quickstart
 
 ```julia
-using CopyNumberEvolution
+using CopyNumberPainter
 
 assembly = hg38(:female)
 

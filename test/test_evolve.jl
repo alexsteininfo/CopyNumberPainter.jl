@@ -198,7 +198,7 @@
             @test events_below(res, i) == [e for e in res.events if e.node in below(i)]
         end
         # replay no longer consults the model
-        stripped = CopyNumberEvolution.CNAEvolution(res.tree, res.assembly, nothing,
+        stripped = CopyNumberPainter.CNAEvolution(res.tree, res.assembly, nothing,
             res.profiles, res.events, res.event_ranges, res.root_base, res.rejections,
             res.seed, res.rng_mode, res.retain_internal)
         @test replay(stripped) == [profile(res, i) for i in 1:nnodes(t)]
@@ -206,7 +206,7 @@
 
     @testset "_event_ranges rejects logs that replay could not trust" begin
         ev(node, order) = LoggedEvent(node, order, WholeGenomeDoubling(:multiply))
-        er = CopyNumberEvolution._event_ranges
+        er = CopyNumberPainter._event_ranges
         @test er([ev(1, 1), ev(2, 1), ev(2, 2), ev(3, 1)], 4) == [1:1, 2:3, 4:4, 1:0]
         @test_throws ArgumentError er([ev(2, 1), ev(3, 1), ev(2, 2)], 3)   # interleaved
         @test_throws ArgumentError er([ev(1, 1), ev(5, 1)], 3)             # node out of range
@@ -294,10 +294,10 @@
     end
 
     @testset "seeded streams are pinned across Julia versions" begin
-        r = CopyNumberEvolution._stable_rng(UInt64(1))
+        r = CopyNumberPainter._stable_rng(UInt64(1))
         @test rand(r, UInt64) == 0x6bfbe5ada17babc0
         @test rand(r, UInt64) == 0xd9791c54a38dd5f4
-        @test rand(CopyNumberEvolution._stable_rng(UInt64(1), UInt64(2), UInt64(7)), UInt64) ==
+        @test rand(CopyNumberPainter._stable_rng(UInt64(1), UInt64(2), UInt64(7)), UInt64) ==
               0x336c294898a4faba
     end
 
@@ -354,7 +354,7 @@
 
     @testset "Given rejects a non-canonical profile" begin
         p = diploid(A())
-        p.segments[1] = [CopyNumberEvolution.Segment(1, 500, 1), CopyNumberEvolution.Segment(501, 1000, 1)]
+        p.segments[1] = [CopyNumberPainter.Segment(1, 500, 1), CopyNumberPainter.Segment(501, 1000, 1)]
         @test_throws ErrorException Given(p)
     end
 

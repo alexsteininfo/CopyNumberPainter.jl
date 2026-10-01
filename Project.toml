@@ -1,4 +1,4 @@
-name = "CopyNumberEvolution"
+name = "CopyNumberPainter"
 uuid = "a7fad464-da36-487c-8111-789b46084000"
 authors = ["Alexander Stein <alexander.stein@vib.be>"]
 version = "0.2.0"
@@ -15,8 +15,8 @@ AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
 NonMarkovEvolution = "7b855ee6-6887-412f-a571-26d20a5a92d7"
 
 [extensions]
-CopyNumberEvolutionAbstractTreesExt = "AbstractTrees"
-CopyNumberEvolutionNonMarkovEvolutionExt = "NonMarkovEvolution"
+CopyNumberPainterAbstractTreesExt = "AbstractTrees"
+CopyNumberPainterNonMarkovEvolutionExt = "NonMarkovEvolution"
 
 [compat]
 AbstractTrees = "0.4"

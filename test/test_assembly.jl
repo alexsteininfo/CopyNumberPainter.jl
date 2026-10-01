@@ -81,15 +81,15 @@
         @test !same_assembly(hg38(:female), hg38(:male))
         @test !same_assembly(hg38(:female), hg19(:female))
         # two assemblies sharing a name but differing in structure are NOT the same
-        s1 = [CopyNumberEvolution.ChromosomeSpec("chr1", 100, 41:60)]
-        s2 = [CopyNumberEvolution.ChromosomeSpec("chr1", 100, 41:60),
-              CopyNumberEvolution.ChromosomeSpec("chr2", 100, 41:60)]
-        a1 = CopyNumberEvolution.GenomeAssembly("toy", :female, s1, [2])
-        a2 = CopyNumberEvolution.GenomeAssembly("toy", :female, s2, [2, 2])
+        s1 = [CopyNumberPainter.ChromosomeSpec("chr1", 100, 41:60)]
+        s2 = [CopyNumberPainter.ChromosomeSpec("chr1", 100, 41:60),
+              CopyNumberPainter.ChromosomeSpec("chr2", 100, 41:60)]
+        a1 = CopyNumberPainter.GenomeAssembly("toy", :female, s1, [2])
+        a2 = CopyNumberPainter.GenomeAssembly("toy", :female, s2, [2, 2])
         @test !same_assembly(a1, a2)
         # differing only in a chromosome length is also not the same
-        s3 = [CopyNumberEvolution.ChromosomeSpec("chr1", 200, 41:60)]
-        a3 = CopyNumberEvolution.GenomeAssembly("toy", :female, s3, [2])
+        s3 = [CopyNumberPainter.ChromosomeSpec("chr1", 200, 41:60)]
+        a3 = CopyNumberPainter.GenomeAssembly("toy", :female, s3, [2])
         @test !same_assembly(a1, a3)
     end
 end

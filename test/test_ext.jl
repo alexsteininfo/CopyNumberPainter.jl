@@ -3,14 +3,14 @@
         proj = read(joinpath(@__DIR__, "..", "Project.toml"), String)
         @test occursin("[weakdeps]", proj)
         @test occursin("NonMarkovEvolution = \"7b855ee6-6887-412f-a571-26d20a5a92d7\"", proj)
-        @test occursin("CopyNumberEvolutionNonMarkovEvolutionExt = \"NonMarkovEvolution\"", proj)
+        @test occursin("CopyNumberPainterNonMarkovEvolutionExt = \"NonMarkovEvolution\"", proj)
         # and never a hard dependency: the simulator must not be reachable from an
         # inference-only install
         deps = match(r"\[deps\](.*?)\n\["s, proj)
         @test deps !== nothing
         @test !occursin("NonMarkovEvolution", deps.captures[1])
         @test isfile(joinpath(@__DIR__, "..", "ext",
-                              "CopyNumberEvolutionNonMarkovEvolutionExt.jl"))
+                              "CopyNumberPainterNonMarkovEvolutionExt.jl"))
     end
 
     nme_loaded = try

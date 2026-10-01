@@ -433,7 +433,9 @@ acquired at its own birth.
 The founder has no incoming edge, so those mutations cannot be attributed to one, and
 [`PhyloTree`](@ref) leaves the root's `edge_mutations` as `nothing`. If you want them
 translated into copy-number alterations, feed this to
-`CNAModel(initial = TruncalCNAs(founder_mutations(root)))`.
+`CNAModel(initial = TruncalCNAs(founder_mutations(root)))`. A founder made by
+`NonMarkovEvolution.initialize_population` carries no drivers, so this is 0 on a
+simulated tree; it matters for hand-built trees.
 
 Requires `NonMarkovEvolution` to be loaded; it is provided by a package extension.
 """

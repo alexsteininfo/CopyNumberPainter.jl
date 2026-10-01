@@ -1,19 +1,19 @@
 """
-    CopyNumberEvolutionNonMarkovEvolutionExt
+    CopyNumberPainterNonMarkovEvolutionExt
 
 Bridge from `NonMarkovEvolution.jl`'s pointer-based lineage trees to
-`CopyNumberEvolution.PhyloTree`.
+`CopyNumberPainter.PhyloTree`.
 
 This is a **package extension**, loaded only when both packages are present. Loading
-`CopyNumberEvolution` alone gives the copy-number modeller with no simulator in the
+`CopyNumberPainter` alone gives the copy-number modeller with no simulator in the
 dependency chain — which is the point, because the downstream inference package must
 be installable and runnable against real patient data with no simulator anywhere in
 its dependencies.
 """
-module CopyNumberEvolutionNonMarkovEvolutionExt
+module CopyNumberPainterNonMarkovEvolutionExt
 
-using CopyNumberEvolution
-using CopyNumberEvolution: PhyloNode, PhyloTree, founder_mutations
+using CopyNumberPainter
+using CopyNumberPainter: PhyloNode, PhyloTree, founder_mutations
 using NonMarkovEvolution: BinaryNode, NonMarkovCell, LeafSample
 
 """
@@ -43,7 +43,7 @@ The root's `edge_mutations` is `nothing`, since the founder has no incoming edge
 [`founder_mutations`](@ref) if you want those mutations translated into truncal
 alterations.
 """
-function CopyNumberEvolution.PhyloTree(root::BinaryNode{NonMarkovCell})
+function CopyNumberPainter.PhyloTree(root::BinaryNode{NonMarkovCell})
     par = Union{Int,Nothing}[]
     kids = Vector{Int}[]
     bt = Union{Float64,Nothing}[]
@@ -81,15 +81,15 @@ Convert the lineage tree of a `NonMarkovEvolution.sample_leaves` draw. Sampling
 prunes without collapsing, so the result keeps one edge per real division and the
 founder as root; see [`PhyloTree`](@ref).
 """
-CopyNumberEvolution.PhyloTree(s::LeafSample) = CopyNumberEvolution.PhyloTree(s.root)
+CopyNumberPainter.PhyloTree(s::LeafSample) = CopyNumberPainter.PhyloTree(s.root)
 
 """
     founder_mutations(root::BinaryNode{NonMarkovCell}) -> Int
 
 Driver mutations the founder cell acquired at its own birth. See
-`CopyNumberEvolution.founder_mutations`.
+`CopyNumberPainter.founder_mutations`.
 """
-CopyNumberEvolution.founder_mutations(root::BinaryNode{NonMarkovCell}) =
+CopyNumberPainter.founder_mutations(root::BinaryNode{NonMarkovCell}) =
     Int(root.data.drivers)
 
 end # module

@@ -3,7 +3,7 @@
 #   julia --project=. test/run_file.jl test_newick.jl
 #
 # The full suite is still `Pkg.test()`; this exists for fast iteration.
-using CopyNumberEvolution
+using CopyNumberPainter
 using Test
 using Random
 using Distributions

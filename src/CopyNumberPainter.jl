@@ -1,5 +1,5 @@
 """
-    CopyNumberEvolution
+    CopyNumberPainter
 
 Forward simulation of somatic copy-number alterations along a cell-lineage tree.
 
@@ -15,7 +15,7 @@ or compute distances between profiles.
 See the manual for the modelling choices and their consequences, and
 `literature/MEDICC2.md` for the reference method this model is calibrated against.
 """
-module CopyNumberEvolution
+module CopyNumberPainter
 
 using Random
 using Distributions

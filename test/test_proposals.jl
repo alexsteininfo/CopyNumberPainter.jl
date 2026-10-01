@@ -30,9 +30,9 @@
     end
 
     @testset "LengthWeighted is proportional to chromosome length" begin
-        specs = [CopyNumberEvolution.ChromosomeSpec("chr1", 3000, 1201:1800),
-                 CopyNumberEvolution.ChromosomeSpec("chr2", 1000, 401:600)]
-        a = CopyNumberEvolution.GenomeAssembly("w", :female, specs, [2, 2])
+        specs = [CopyNumberPainter.ChromosomeSpec("chr1", 3000, 1201:1800),
+                 CopyNumberPainter.ChromosomeSpec("chr2", 1000, 401:600)]
+        a = CopyNumberPainter.GenomeAssembly("w", :female, specs, [2, 2])
         p = diploid(a)
         rng = Random.Xoshiro(13)
         n1 = 0
@@ -85,9 +85,9 @@
     end
 
     @testset "CNWeighted weights by material: length × mean_cn^β" begin
-        specs = [CopyNumberEvolution.ChromosomeSpec("chr1", 3000, 1201:1800),
-                 CopyNumberEvolution.ChromosomeSpec("chr2", 1000, 401:600)]
-        a = CopyNumberEvolution.GenomeAssembly("w", :female, specs, [2, 2])
+        specs = [CopyNumberPainter.ChromosomeSpec("chr1", 3000, 1201:1800),
+                 CopyNumberPainter.ChromosomeSpec("chr2", 1000, 401:600)]
+        a = CopyNumberPainter.GenomeAssembly("w", :female, specs, [2, 2])
         p = diploid(a)
         rng = Random.Xoshiro(23)
         frac(rule) = count(_ -> first(draw_target(rule, p, rng)) == 1, 1:40_000) / 40_000
@@ -148,8 +148,8 @@
 
     @testset "focal coverage is symmetric along the chromosome" begin
         L = 10_000
-        a = CopyNumberEvolution.GenomeAssembly("sym", :female,
-                [CopyNumberEvolution.ChromosomeSpec("chr1", L, 4001:6000)], [2])
+        a = CopyNumberPainter.GenomeAssembly("sym", :female,
+                [CopyNumberPainter.ChromosomeSpec("chr1", L, 4001:6000)], [2])
         p = diploid(a)
         d = ExtentMixture(lengthdist = Distributions.Uniform(1000.0, 3000.0))
         rng = Random.Xoshiro(22)
@@ -206,8 +206,8 @@
     end
 
     @testset "weighted sampling never picks a zero weight, even at u = 0" begin
-        @test CopyNumberEvolution._sample_weighted(ZeroRNG(), [0.0, 1.0]) == 2
-        @test CopyNumberEvolution._sample_weighted(ZeroRNG(), [0.0, 0.0, 2.0, 0.0]) == 3
+        @test CopyNumberPainter._sample_weighted(ZeroRNG(), [0.0, 1.0]) == 2
+        @test CopyNumberPainter._sample_weighted(ZeroRNG(), [0.0, 0.0, 2.0, 0.0]) == 3
     end
 
     @testset "CNWeighted at u = 0 skips a leading deleted slot" begin

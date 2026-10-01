@@ -4,7 +4,7 @@
 # real numbers instead of a code listing. Run with:
 #   julia --project examples/01_quickstart.jl
 
-using CopyNumberEvolution
+using CopyNumberPainter
 
 # A small lineage tree: root -> two divisions -> four leaves. Real trees come from
 # `NonMarkovEvolution.jl` or `read_newick`; see example 05 for the newick route.

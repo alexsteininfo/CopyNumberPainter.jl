@@ -1,13 +1,13 @@
-using CopyNumberEvolution
+using CopyNumberPainter
 using Test
 using Random
 using Distributions   # tests construct length distributions directly
 
 include("fixtures.jl")
 
-@testset "CopyNumberEvolution.jl" begin
+@testset "CopyNumberPainter.jl" begin
     @testset "smoke" begin
-        @test isdefined(CopyNumberEvolution, :CopyNumberEvolution)
+        @test isdefined(CopyNumberPainter, :CopyNumberPainter)
     end
 
     include("test_assembly.jl")

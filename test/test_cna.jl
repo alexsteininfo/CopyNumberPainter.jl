@@ -1,5 +1,5 @@
 @testset "cna" begin
-    S = CopyNumberEvolution.Segment
+    S = CopyNumberPainter.Segment
 
     @testset "constructor validation" begin
         @test_throws ArgumentError SegmentalCNA(1, 1, 10, 5, 1, :focal)

@@ -12,7 +12,7 @@ Later events then act on the doubled genome. Match that, or the
 truth and the method are measuring different things:
 
 ```julia
-using CopyNumberEvolution
+using CopyNumberPainter
 
 # `tree` is the lineage tree built in the README quickstart.
 assembly = hg38(:female)

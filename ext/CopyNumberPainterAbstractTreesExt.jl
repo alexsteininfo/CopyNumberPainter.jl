@@ -1,13 +1,13 @@
 """
-    CopyNumberEvolutionAbstractTreesExt
+    CopyNumberPainterAbstractTreesExt
 
-The `AbstractTrees.jl` interface for `CopyNumberEvolution.NodeRef`, loaded only when
+The `AbstractTrees.jl` interface for `CopyNumberPainter.NodeRef`, loaded only when
 both packages are present.
 """
-module CopyNumberEvolutionAbstractTreesExt
+module CopyNumberPainterAbstractTreesExt
 
-using CopyNumberEvolution
-using CopyNumberEvolution: NodeRef
+using CopyNumberPainter
+using CopyNumberPainter: NodeRef
 import AbstractTrees
 
 AbstractTrees.children(n::NodeRef) = [NodeRef(n.tree, c) for c in childrenof(n.tree, n.id)]

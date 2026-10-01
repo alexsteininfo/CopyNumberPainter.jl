@@ -106,21 +106,21 @@
         # A node listed twice as a child cannot be built through phylotree —
         # it buckets each node under exactly one parent — so construct the
         # nodes directly. This is the path the newick parser uses.
-        dup = [CopyNumberEvolution.PhyloNode(1, nothing, [2, 2], nothing, nothing,
+        dup = [CopyNumberPainter.PhyloNode(1, nothing, [2, 2], nothing, nothing,
                                              nothing, nothing, nothing),
-               CopyNumberEvolution.PhyloNode(2, 1, Int[], nothing, nothing,
+               CopyNumberPainter.PhyloNode(2, 1, Int[], nothing, nothing,
                                              nothing, nothing, nothing)]
-        @test_throws ArgumentError CopyNumberEvolution.PhyloTree(dup)
+        @test_throws ArgumentError CopyNumberPainter.PhyloTree(dup)
 
         # A child whose recorded parent does not list it. Node 2 claims parent 1,
         # but node 1's child list is empty, so the mutual-consistency check fires.
         # (Giving node 2 a `nothing` parent instead would read as a second root and
         # short-circuit at the root-count check before reaching this branch.)
-        bad = [CopyNumberEvolution.PhyloNode(1, nothing, Int[], nothing, nothing,
+        bad = [CopyNumberPainter.PhyloNode(1, nothing, Int[], nothing, nothing,
                                              nothing, nothing, nothing),
-               CopyNumberEvolution.PhyloNode(2, 1, Int[], nothing, nothing,
+               CopyNumberPainter.PhyloNode(2, 1, Int[], nothing, nothing,
                                              nothing, nothing, nothing)]
-        @test_throws ArgumentError CopyNumberEvolution.PhyloTree(bad)
+        @test_throws ArgumentError CopyNumberPainter.PhyloTree(bad)
     end
 
     @testset "non-binary and unary trees are supported" begin

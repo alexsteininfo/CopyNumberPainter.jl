@@ -1,5 +1,5 @@
 @testset "profile" begin
-    S = CopyNumberEvolution.Segment
+    S = CopyNumberPainter.Segment
 
     @testset "Segment length" begin
         @test length(S(1, 10, 2)) == 10
@@ -67,7 +67,7 @@
 
     @testset "check_invariants names every violation" begin
         a = toy_assembly(nchrom = 1, len = 100)
-        mk(segs) = CopyNumberEvolution.CNProfile(a, [copy(segs), copy(segs)])
+        mk(segs) = CopyNumberPainter.CNProfile(a, [copy(segs), copy(segs)])
         @test check_invariants(mk([S(1, 100, 1)]))
         # does not start at 1
         @test_throws ErrorException check_invariants(mk([S(2, 100, 1)]))
@@ -128,11 +128,11 @@
         for s in 1:nslots(a)
             L = chromlength(a, slot_chrom(a, s))
             bps = sort(unique(rand(rng, 2:L, 6)))
-            segs = CopyNumberEvolution.Segment[]
+            segs = CopyNumberPainter.Segment[]
             prev = 1
             for b in vcat(bps, L + 1)
                 b > prev || continue
-                push!(segs, CopyNumberEvolution.Segment(prev, b - 1, rand(rng, 0:4)))
+                push!(segs, CopyNumberPainter.Segment(prev, b - 1, rand(rng, 0:4)))
                 prev = b
             end
             canonicalize!(segs)
@@ -149,12 +149,12 @@
     end
 
     @testset "mean_cn" begin
-        @test CopyNumberEvolution.mean_cn([S(1, 50, 2), S(51, 100, 0)], 100) ≈ 1.0
-        @test CopyNumberEvolution.mean_cn([S(1, 100, 3)], 100) ≈ 3.0
+        @test CopyNumberPainter.mean_cn([S(1, 50, 2), S(51, 100, 0)], 100) ≈ 1.0
+        @test CopyNumberPainter.mean_cn([S(1, 100, 3)], 100) ≈ 3.0
     end
 
     @testset "canonicalize! merges long equal runs in one pass" begin
-        S = CopyNumberEvolution.Segment
+        S = CopyNumberPainter.Segment
         segs = [S(1, 2, 2), S(3, 3, 2), S(4, 6, 1), S(7, 7, 1), S(8, 8, 1), S(9, 10, 2)]
         canonicalize!(segs)
         @test segs == [S(1, 3, 2), S(4, 8, 1), S(9, 10, 2)]

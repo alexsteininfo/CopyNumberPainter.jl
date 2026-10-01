@@ -8,7 +8,7 @@
 #
 # Run with: julia --project examples/04_viability_rejection.jl
 
-using CopyNumberEvolution
+using CopyNumberPainter
 
 # A hemizygous assembly: chr1 is present in a single copy, so the only whole-chromosome
 # loss available drives it straight to copy number 0 — the sharpest possible test case.

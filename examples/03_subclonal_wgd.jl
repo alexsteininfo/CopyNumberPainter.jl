@@ -7,7 +7,7 @@
 #
 # Run with: julia --project examples/03_subclonal_wgd.jl
 
-using CopyNumberEvolution
+using CopyNumberPainter
 
 # root (1) -> {2, 3}; 2 -> {4, 5}. Leaves 4 and 5 form a subclade; leaf 3 does not.
 tree = phylotree([nothing, 1, 1, 2, 2]; edge_divisions = [nothing, 1, 1, 1, 1])

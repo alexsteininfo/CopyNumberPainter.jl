@@ -84,7 +84,7 @@ count usually means the file should have been read as `:time`.
 Load both packages and a converter appears:
 
 ```julia
-using CopyNumberEvolution, NonMarkovEvolution
+using CopyNumberPainter, NonMarkovEvolution
 
 tree = PhyloTree(root)               # root::BinaryNode{NonMarkovCell}
 tree = PhyloTree(sample_leaves(root, 100; seed = 1))   # a leaf sample
@@ -95,7 +95,7 @@ Mapping: `birthtime` from the cell; `edge_divisions = 1`, because one lineage-tr
 is exactly one division; `edge_mutations = cell.drivers`; `source_id = cell.id`. All
 three rate rules therefore work on a converted tree.
 
-This is a **package extension**. Loading `CopyNumberEvolution` alone gives the
+This is a **package extension**. Loading `CopyNumberPainter` alone gives the
 copy-number modeller with no simulator anywhere in the dependency chain — which
 matters, because the downstream inference package has to be installable and runnable
 against real patient data, and a hard dependency here would make a simulator
@@ -103,7 +103,13 @@ transitively required to analyse a clinical dataset.
 
 The founder has no incoming edge, so its own mutations cannot be attributed to one and
 the root's `edge_mutations` is `nothing`. If you want them translated, feed
-[`founder_mutations`](@ref) into `TruncalCNAs`.
+[`founder_mutations`](@ref) into `TruncalCNAs`. A founder made by
+`NonMarkovEvolution.initialize_population` carries no drivers, so on a simulated tree
+this is 0; it matters for hand-built trees.
+
+`NonMarkovEvolution.jl` records only driver mutations (`cell.drivers`, the drivers
+acquired at that cell's birth). `edge_mutations` and therefore
+[`FromEdgeMutations`](@ref) count drivers, not passengers.
 
 ## Sampling happens upstream
 
@@ -123,7 +129,9 @@ Two consequences. The root of a sampled tree is the original **founder**, not th
 recent common ancestor of the sample — which is why truncal state is expressed as the
 root's [`InitialState`](@ref) rather than as an MRCA special case. And with
 `rng_mode = :per_node` the commuting property holds *exactly*, not just
-distributionally, under the conditions listed in [Output](output.md).
+distributionally, under the conditions listed in [Output](output.md). Both halves are
+reproducible across Julia versions: `sample_leaves` draws with `StableRNG(seed)` (since
+`NonMarkovEvolution` 0.4), and this package's seeded streams are version-stable too.
 
 ## Generic tree tooling
 
