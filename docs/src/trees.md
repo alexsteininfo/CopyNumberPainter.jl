@@ -86,13 +86,14 @@ Load both packages and a converter appears:
 ```julia
 using CopyNumberPainter, NonMarkovEvolution
 
-tree = PhyloTree(root)               # root::BinaryNode{NonMarkovCell}
-tree = PhyloTree(sample_leaves(root, 100; seed = 1))   # a leaf sample
+root = single_root(pop)              # root::CellNode (NonMarkovEvolution ≥ 0.5)
+tree = PhyloTree(root)
+tree = PhyloTree(sample_leaves(pop, 100; seed = 1))    # a leaf sample
 founder_mutations(root)              # the founder's own mutations
 ```
 
 Mapping: `birthtime` from the cell; `edge_divisions = 1`, because one lineage-tree edge
-is exactly one division; `edge_mutations = cell.drivers`; `source_id = cell.id`. All
+is exactly one division; `edge_mutations = node.mutations`; `source_id = node.id`. All
 three rate rules therefore work on a converted tree.
 
 This is a **package extension**. Loading `CopyNumberPainter` alone gives the
@@ -104,12 +105,12 @@ transitively required to analyse a clinical dataset.
 The founder has no incoming edge, so its own mutations cannot be attributed to one and
 the root's `edge_mutations` is `nothing`. If you want them translated, feed
 [`founder_mutations`](@ref) into `TruncalCNAs`. A founder made by
-`NonMarkovEvolution.initialize_population` carries no drivers, so on a simulated tree
+`NonMarkovEvolution.initialize_population` carries no mutations, so on a simulated tree
 this is 0; it matters for hand-built trees.
 
-`NonMarkovEvolution.jl` records only driver mutations (`cell.drivers`, the drivers
-acquired at that cell's birth). `edge_mutations` and therefore
-[`FromEdgeMutations`](@ref) count drivers, not passengers.
+`edge_mutations` is `node.mutations`, the number of mutations acquired at that cell's
+birth. `NonMarkovEvolution.jl` counts every simulated mutation, whether or not it
+changes fitness, so [`FromEdgeMutations`](@ref) counts all of them, not only drivers.
 
 ## Sampling happens upstream
 

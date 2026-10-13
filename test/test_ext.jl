@@ -26,9 +26,9 @@
                  julia -e 'using Pkg; Pkg.activate(temp = true); Pkg.develop(path = pwd()); Pkg.develop(path = "../NonMarkovEvolution.jl"); Pkg.add(["Test", "Distributions", "Aqua", "AbstractTrees", "REPL"]); include(joinpath(pwd(), "test", "runtests.jl"))'"""
     else
         @testset "converting a lineage tree" begin
-            # Build a small BinaryNode tree by hand: founder -> two daughters,
+            # Build a small lineage tree by hand: founder -> two daughters,
             # the left one dividing again.
-            root = NonMarkovEvolution.BinaryNode(
+            root = NonMarkovEvolution.CellNode(
                 NonMarkovEvolution.NonMarkovCell(1, 0.0, 3, 3, 1.0))
             NonMarkovEvolution.left_child!(root,
                 NonMarkovEvolution.NonMarkovCell(2, 1.5, 4, 7, 1.0))
@@ -61,7 +61,7 @@
         end
 
         @testset "all three rate rules work on a converted tree" begin
-            root = NonMarkovEvolution.BinaryNode(
+            root = NonMarkovEvolution.CellNode(
                 NonMarkovEvolution.NonMarkovCell(1, 0.0, 2, 2, 1.0))
             NonMarkovEvolution.left_child!(root,
                 NonMarkovEvolution.NonMarkovCell(2, 1.0, 5, 7, 1.0))
@@ -76,7 +76,7 @@
         end
 
         @testset "a unary chain, as pruning leaves behind, converts unchanged" begin
-            root = NonMarkovEvolution.BinaryNode(
+            root = NonMarkovEvolution.CellNode(
                 NonMarkovEvolution.NonMarkovCell(1, 0.0, 0, 0, 1.0))
             NonMarkovEvolution.left_child!(root,
                 NonMarkovEvolution.NonMarkovCell(2, 1.0, 1, 1, 1.0))
@@ -89,7 +89,7 @@
         end
 
         @testset "an end-to-end run on a converted tree" begin
-            root = NonMarkovEvolution.BinaryNode(
+            root = NonMarkovEvolution.CellNode(
                 NonMarkovEvolution.NonMarkovCell(1, 0.0, 0, 0, 1.0))
             NonMarkovEvolution.left_child!(root,
                 NonMarkovEvolution.NonMarkovCell(2, 1.0, 6, 6, 1.0))
@@ -104,17 +104,50 @@
             @test replay(res) == [profile(res, i) for i in 1:nnodes(t)]
         end
 
+        @testset "a simulated population converts with its pruning intact" begin
+            # A real run, so the tree has died-out lineages pruned (and rows compacted)
+            # inside a shared LineageTree rather than a hand-built shape.
+            M = NonMarkovEvolution
+            pop = M.initialize_population(fitness_init = 1.0)
+            block = M.NonMarkovBlock(
+                birth_dist     = f -> Gamma(5.0, 1 / (5 * f)),
+                death_dist     = f -> Exponential(1 / 0.3),
+                effect_dist    = Exponential(0.05),
+                fitness_update = (f, δ) -> f + δ,
+                ν              = 0.5,
+                stopfunction   = p -> M.popsize(p) >= 300,
+                restart_on_extinction = true)
+            M.simulate!(pop, block, Random.Xoshiro(7))
+            root = M.single_root(pop)
+            t = PhyloTree(root)
+            alive = M.alive_cells(pop)
+            @test length(leaves(t)) == length(alive)
+            @test Set(node(t, l).source_id for l in leaves(t)) == Set(c.id for c in alive)
+            # one edge per division: divisional depth and mutation burden are unchanged
+            nme_depths = Dict(c.id => d for (c, d) in
+                              zip(M.alive_cells(root), M.leaf_depths(root; order = :leaves)))
+            for c in alive
+                i = node_by_source_id(t, c.id)
+                @test depth(t, i) == nme_depths[c.id]
+                path = ancestors(t, i)
+                @test founder_mutations(root) +
+                      sum(node(t, j).edge_mutations for j in path[2:end]; init = 0) ==
+                      c.total_mutations
+            end
+            @test PhyloTree(M.sample_leaves(pop, 20; seed = 3)) isa PhyloTree
+        end
+
         # A complete binary lineage tree of `depth` divisions as NonMarkovEvolution
-        # BinaryNodes; `total_drivers` is kept consistent with the path from the root.
+        # CellNodes; `total_mutations` is kept consistent with the path from the root.
         function nme_tree(depth)
             M = NonMarkovEvolution
-            root = M.BinaryNode(M.NonMarkovCell(1, 0.0, 0, 0, 1.0))
+            root = M.CellNode(M.NonMarkovCell(1, 0.0, 0, 0, 1.0))
             next = Ref(2)
             frontier = [root]
             for d in 1:depth
                 newf = eltype(frontier)[]
                 for nd in frontier
-                    tot = nd.data.total_drivers
+                    tot = nd.total_mutations
                     M.left_child!(nd, M.NonMarkovCell(next[], Float64(d), d % 3, tot + d % 3, 1.0))
                     next[] += 1
                     M.right_child!(nd, M.NonMarkovCell(next[], d + 0.5, (d + 1) % 3, tot + (d + 1) % 3, 1.0))
